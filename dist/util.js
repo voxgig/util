@@ -6,6 +6,7 @@ exports.joins = joins;
 exports.get = get;
 exports.pinify = pinify;
 exports.camelify = camelify;
+exports.entity = entity;
 function dive(node, depth, mapper) {
     let d = (null == depth || 'number' != typeof depth) ? 2 : depth;
     mapper = 'function' === typeof depth ? depth : mapper;
@@ -89,5 +90,40 @@ function camelify(input) {
     return parts
         .map((p) => ('' === p ? '' : (p[0].toUpperCase() + p.substring(1))))
         .join('');
+}
+// TODO: only works on base/name style entities - generalize
+function entity(model) {
+    let entries = dive(model.main.ent);
+    let entMap = {};
+    for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        let path = entry[0];
+        // TODO: move EntShape to @voxgig/model
+        // let ent = EntShape(entry[1])
+        let ent = entry[1];
+        // console.log('ENT', path, ent)
+        let valid = ent.valid || {};
+        Object.entries(ent.field).map((n) => {
+            let name = n[0];
+            let field = n[1];
+            // console.log('FV', name, field)
+            let fv = field.kind;
+            if (field.valid) {
+                let vt = typeof field.valid;
+                if ('string' === vt) {
+                    fv += '.' + field.valid;
+                }
+                else {
+                    fv = field.valid;
+                }
+            }
+            valid[name] = fv;
+        });
+        // console.log(path, valid)
+        entMap[path[0] + '/' + path[1]] = {
+            valid_json: valid
+        };
+    }
+    return entMap;
 }
 //# sourceMappingURL=util.js.map

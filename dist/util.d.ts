@@ -4,4 +4,5 @@ declare function joins(arr: any[], ...seps: string[]): string;
 declare function get(root: any, path: string | string[]): any;
 declare function pinify(path: string[]): string;
 declare function camelify(input: any[] | string): string;
-export { dive, joins, get, pinify, camelify, };
+declare function entity(model: any): any;
+export { dive, joins, get, pinify, camelify, entity, };

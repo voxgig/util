@@ -3,12 +3,16 @@ import { test, describe } from 'node:test'
 import { expect } from '@hapi/code'
 
 
+import { Gubu } from 'gubu'
+
+
 import {
   camelify,
   dive,
   get,
   joins,
   pinify,
+  entity,
 } from '../'
 
 
@@ -20,6 +24,7 @@ describe('util', () => {
     expect(typeof get).equal('function')
     expect(typeof joins).equal('function')
     expect(typeof pinify).equal('function')
+    expect(typeof entity).equal('function')
   })
 
 
@@ -62,4 +67,35 @@ describe('util', () => {
     expect(pinify(['a', 'b', 'c', 'd'])).equal('a:b,c:d')
   })
 
+
+  test('entity', async () => {
+    const s0 = entity({
+      main: {
+        ent: {
+          'qaz': {
+            'zed': {
+              valid: {
+                '$$': 'Open'
+              },
+              field: {
+                foo: {
+                  valid: {
+                    a: 'Number'
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    })
+    // console.dir(s0, { depth: null })
+    expect(s0).equal({
+      'qaz/zed': { valid_json: { '$$': 'Open', foo: { a: 'Number' } } }
+    })
+
+    const g0 = Gubu.build(s0['qaz/zed'].valid_json)
+    // console.log(g0.stringify())
+    expect(g0.stringify()).equal('{"foo":{"a":"Number"},"$$":"Open()"}')
+  })
 })
