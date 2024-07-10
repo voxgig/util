@@ -1,6 +1,6 @@
 {
   "name": "@voxgig/util",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "main": "dist/util.js",
   "type": "commonjs",
   "types": "dist/util.d.ts",
