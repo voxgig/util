@@ -1,3 +1,0 @@
-foo: 33
-bar: number
-bar: @"./zed.jsonic"

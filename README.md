@@ -1,7 +1,4 @@
-# Model
+# Util
 
-A framework for universal application modeling.
+Shared utilities used by front and back end.
 
-PROTOTYPE.
-
-INSPIRED BY: http://cuelang.org

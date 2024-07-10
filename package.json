@@ -1,33 +1,25 @@
 {
-  "name": "@voxgig/model",
-  "version": "1.5.0",
-  "main": "dist/model.js",
+  "name": "@voxgig/util",
+  "version": "0.0.1",
+  "main": "dist/util.js",
   "type": "commonjs",
-  "types": "dist/model.d.ts",
-  "bin": {
-    "voxgig-model": "bin/voxgig-model"
-  },
-  "description": "Voxgig Model.",
-  "homepage": "https://github.com/voxgig/model",
+  "types": "dist/util.d.ts",
+  "description": "Voxgig Util.",
+  "homepage": "https://github.com/voxgig/util",
   "keywords": [
     "voxgig",
-    "model"
+    "util"
   ],
   "author": "Richard Rodger (http://richardrodger.com)",
   "repository": {
     "type": "git",
-    "url": "git://github.com/voxgig/model.git"
+    "url": "git://github.com/voxgig/util.git"
   },
   "scripts": {
-    "test": "jest --coverage",
-    "test-pure": "jest --coverage --config jest.config.pure.js",
-    "test-some": "jest -t",
-    "test-watch": "jest --coverage --watchAll",
-    "test-model": "voxgig-model test/sys01/model/model.jsonic",
-    "model": "voxgig-model model/sys.jsonic",
-    "model-build": "voxgig-model model/sys.jsonic --once",
-    "watch": "tsc -w -d",
-    "build": "tsc -d",
+    "test": "node --enable-source-maps --test dist-test",
+    "test-some": "node --enable-source-maps --test-name-pattern=\"$npm_config_pattern\" --test dist-test",
+    "watch": "tsc --build src test -w",
+    "build": "tsc --build src test",
     "clean": "rm -rf node_modules yarn.lock package-lock.json",
     "reset": "npm run clean && npm i && npm run build && npm test",
     "repo-tag": "REPO_VERSION=`node -e \"console.log(require('./package').version)\"` && echo TAG: v$REPO_VERSION && git commit -a -m v$REPO_VERSION && git push && git tag v$REPO_VERSION && git push --tags;",
@@ -36,24 +28,16 @@
   },
   "license": "MIT",
   "files": [
-    "model.ts",
-    "lib",
+    "src",
     "dist",
-    "bin",
-    "model",
     "LICENSE"
   ],
   "dependencies": {
-    "aontu": "0.21.1",
-    "chokidar": "3.6.0"
   },
   "devDependencies": {
-    "@types/node": "20.14.2",
-    "@types/jest": "^29.5.12",
-    "esbuild": "^0.21.5",
-    "esbuild-jest": "^0.5.0",
-    "jest": "^29.7.0",
-    "es-jest": "^2.1.0",
-    "typescript": "^5.4.5"
+    "@types/node": "20.14.10",
+    "esbuild": "^0.23.0",
+    "@hapi/code": "^9.0.3",
+    "typescript": "^5.5.3"
   }
 }
