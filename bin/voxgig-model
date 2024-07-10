@@ -1,0 +1,52 @@
+#!/usr/bin/env node
+
+const Fs = require('fs')
+const Path = require('path')
+
+let { Model } = require('../dist/model.js')
+
+
+let path = process.argv[2]
+let once = '--once' === process.argv[3]
+
+if(null == path || '' == path) {
+  console.error('ERROR: First argument should be a jsonic model file path.')
+  process.exit(1)
+}
+
+let fstats = Fs.statSync(path)
+// let base = path
+let base = Path.resolve(path)
+
+if (fstats.isFile()) {
+  let basedesc = Path.parse(base)
+  base = basedesc.dir
+}
+
+path = Path.resolve(path)
+
+let src = Fs.readFileSync(path).toString()
+
+let spec = {
+  src,
+  path,
+  base,
+  require: process.cwd()
+}
+
+let model = new Model(spec)
+
+async function run() {
+  if(once) {
+    let br = await model.run()
+    if(0 < br.err.length) {
+      process.exit(1)
+    }
+  }
+  else {
+    model.start()
+  }
+}
+
+
+run()

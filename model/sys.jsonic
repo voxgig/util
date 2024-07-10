@@ -1,0 +1,153 @@
+
+
+# Service Shapes
+# --------------
+
+
+# Service base has no defaults.
+sys: shape: srv: base: {
+  in: {
+    # TODO: validate leaf?
+    # &&: => &:, &: &:, &: &: &:, etc
+  }
+  out: {}
+  deps: {
+    &: {}
+  }
+  api: web: {
+    active: boolean
+    path: {
+      prefix: string
+      area: string
+      suffix: string 
+    }
+    method: string
+    cors: {
+      active: boolean
+    }
+  }
+  env: lambda: {
+    active: boolean
+    timeout: integer
+    handler: {
+    path: {
+      prefix: string
+      suffix: string
+      }
+    }
+  }
+}
+
+
+# Shared service defaults
+sys: shape: srv: std: $.sys.shape.srv.base & {
+  api: web: {
+    active: *true | boolean
+    method: *'POST' | string
+    cors: active: *false | boolean
+    path: prefix: '/api/'
+  }
+  env: lambda: {
+    active: *false | boolean
+    timeout: *30 | integer
+    handler: path: {
+      suffix: *'.handler' | string
+    }
+    kind: *standard | string
+  }
+}
+
+
+# Javascript service defaults
+sys: shape: srv: std_js: $.sys.shape.srv.std & {
+  env: lambda: handler: path: {
+    prefix: *'src/handler/lambda/' | string
+  }
+}
+
+
+# Typescript service defaults
+sys: shape: srv: std_ts: $.sys.shape.srv.std & {
+  env: lambda: handler: path: {
+    prefix: *'dist/handler/lambda/' | string
+  }
+}
+
+
+
+# Entity Shapes
+# -------------
+
+
+sys: shape: ent: {
+  id: {
+    field: 'id'
+  }
+  field: {
+    id: kind: *'Text' | string
+  }
+}
+
+sys: shape: ent: field: &: {
+  active: *true | boolean
+  kind: *'Text' | string  
+  title: string
+  
+  # Developer model (backend)
+  dx: {}
+
+  # User inerface model (frontend)
+  ux: {
+    desc: string
+  }
+} 
+
+
+
+# App Shapes
+# --------------
+
+sys: shape: app: {
+  name: string
+  layout: string
+  # TODO: test
+  # parts: {
+  #   &: {
+  #     part: string
+  #     active: boolean
+  #     # active: *true | boolean
+  #   }
+  # }
+}
+
+sys: shape: part: img: {
+  src: string
+  svg: string
+}
+
+  
+# app: web: basic: .sys.shape.app
+
+# app: web: basic: {
+#   name: basic
+#   layout: BasicAdmin
+# }
+
+# app: web: basic: parts: {
+#   head: {
+#     part: BasicHead
+#   }
+
+#   side: {
+#     part: BasicSide
+#   }
+
+#   main: {
+#     part: BasicMain
+#   }
+
+#   foot: {
+#     part: BasicFoot
+#   }
+# }
+
