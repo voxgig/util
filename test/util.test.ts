@@ -13,6 +13,7 @@ import {
   joins,
   pinify,
   entity,
+  order,
 } from '../'
 
 
@@ -96,6 +97,85 @@ describe('util', () => {
 
     const g0 = Gubu.build(s0['qaz/zed'].valid_json)
     // console.log(g0.stringify())
-    expect(g0.stringify()).equal('{"foo":{"a":"Number"},"$$":"Open()"}')
+    expect(g0.stringify()).equal('{"foo":{"a":"Number"},"$$":"Open"}')
   })
+
+
+  test('order', async () => {
+    expect(order({}, {})).equal([])
+
+    const items = {
+      code: { title: 'Coding' },
+      tech: { title: 'Technology' },
+      devr: { title: 'Developer Relations' },
+    }
+
+    expect(order(items, {})).equal([
+      { key: 'code', title: 'Coding' },
+      { key: 'tech', title: 'Technology' },
+      { key: 'devr', title: 'Developer Relations' },
+    ])
+
+    expect(order(items, { order: { exclude: 'code,tech' } })).equal([
+      { key: 'devr', title: 'Developer Relations' },
+    ])
+
+    expect(order(items, { order: { include: 'code,tech' } })).equal([
+      { key: 'code', title: 'Coding' },
+      { key: 'tech', title: 'Technology' },
+    ])
+
+    // exclude wins
+    expect(order(items, { order: { exclude: 'code', include: 'code,tech' } })).equal([
+      { key: 'tech', title: 'Technology' },
+    ])
+
+    expect(order(items, { order: {} })).equal([
+      { key: 'code', title: 'Coding' },
+      { key: 'tech', title: 'Technology' },
+      { key: 'devr', title: 'Developer Relations' },
+    ])
+
+    expect(order(items, { order: { sort: 'alpha$' } })).equal([
+      { key: 'code', title: 'Coding' },
+      { key: 'devr', title: 'Developer Relations' },
+      { key: 'tech', title: 'Technology' },
+    ])
+
+    expect(order(items, { order: { sort: 'tech,code' } })).equal([
+      { key: 'tech', title: 'Technology' },
+      { key: 'code', title: 'Coding' },
+    ])
+
+    expect(order(items, { order: { sort: 'tech,alpha$' } })).equal([
+      { key: 'tech', title: 'Technology' },
+      { key: 'code', title: 'Coding' },
+      { key: 'devr', title: 'Developer Relations' },
+    ])
+
+
+
+    const nums = {
+      '1': { title: '1' },
+      '10': { title: '10' },
+      '2': { title: '2' },
+      'tech': { title: 'Technology' },
+    }
+
+    expect(order(nums, { order: { sort: 'alpha$' } })).equal([
+      { key: '1', title: '1' },
+      { key: '10', title: '10' },
+      { key: '2', title: '2' },
+      { key: 'tech', title: 'Technology' },
+    ])
+
+    expect(order(nums, { order: { sort: 'human$' } })).equal([
+      { title: '1', key: '1', 'title$': '00000000001' },
+      { title: '2', key: '2', 'title$': '00000000002' },
+      { title: '10', key: '10', 'title$': '00000000010' },
+      { title: 'Technology', key: 'tech', 'title$': '0Technology' }
+    ])
+
+  })
+
 })

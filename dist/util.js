@@ -7,6 +7,7 @@ exports.get = get;
 exports.pinify = pinify;
 exports.camelify = camelify;
 exports.entity = entity;
+exports.order = order;
 function dive(node, depth, mapper) {
     let d = (null == depth || 'number' != typeof depth) ? 2 : depth;
     mapper = 'function' === typeof depth ? depth : mapper;
@@ -125,5 +126,59 @@ function entity(model) {
         };
     }
     return entMap;
+}
+function order(itemMap, spec) {
+    let items = Object
+        .entries(itemMap)
+        .reduce((a, n) => (n[1].key = (n[1].key || n[0]), a.push(n[1]), a), []);
+    const ops = [
+        order_sort,
+        order_exclude,
+        order_include,
+    ];
+    for (let op of ops) {
+        items = op(items, itemMap, spec?.order || {});
+    }
+    return items;
+}
+function order_sort(items, itemMap, order_spec) {
+    if (order_spec.sort) {
+        let key_order = 'string' === typeof order_spec.sort ?
+            order_spec.sort.split(/\s*,\s*/).map((s) => s.trim()) :
+            order_spec.sort;
+        key_order = key_order
+            .map((k, _) => 'human$' === k ? (_ = 1 + items.reduce((a, n) => (Math.max(a, n.title.length)), 0),
+            items
+                .filter((item) => !key_order.includes(item.key))
+                .map((item) => (item.title$ = item.title.padStart(_, '0'), item))
+                .sort((a, b) => a.title$ > b.title$ ? 1 : a.title$ < b.title$ ? -1 : 0)
+                .map((item) => item.key)) :
+            'alpha$' === k ? (items
+                .filter((item) => !key_order.includes(item.key))
+                .sort((a, b) => a.title > b.title ? 1 : a.title < b.title ? -1 : 0)
+                .map((item) => item.key)) :
+                k)
+            .flat();
+        items = key_order.map((k) => itemMap[k]);
+    }
+    return items;
+}
+function order_exclude(items, itemMap, order_spec) {
+    if (order_spec.exclude) {
+        let excludes = 'string' === typeof order_spec.exclude ?
+            order_spec.exclude.split(/\s*,\s*/).map((s) => s.trim()) :
+            order_spec.exclude;
+        items = items.filter((item) => !excludes.includes(item.key));
+    }
+    return items;
+}
+function order_include(items, itemMap, order_spec) {
+    if (order_spec.include) {
+        let includes = 'string' === typeof order_spec.include ?
+            order_spec.include.split(/\s*,\s*/).map((s) => s.trim()) :
+            order_spec.include;
+        items = items.filter((item) => includes.includes(item.key));
+    }
+    return items;
 }
 //# sourceMappingURL=util.js.map
