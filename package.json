@@ -1,6 +1,6 @@
 {
   "name": "@voxgig/util",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "main": "dist/util.js",
   "type": "commonjs",
   "types": "dist/util.d.ts",
@@ -32,11 +32,15 @@
     "dist",
     "LICENSE"
   ],
+  "peerDependencies": {
+    "pino": ">=9",
+    "pino-pretty": ">=12"
+  },
   "devDependencies": {
     "@hapi/code": "^9.0.3",
-    "@types/node": "22.0.0",
-    "esbuild": "^0.23.0",
+    "@types/node": "22.9.0",
+    "esbuild": "^0.24.0",
     "gubu": "^8.3.0",
-    "typescript": "^5.5.4"
+    "typescript": "^5.6.3"
   }
 }

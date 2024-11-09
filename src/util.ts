@@ -1,7 +1,70 @@
 /* Copyright © 2024 Voxgig Ltd, MIT License. */
 
+import Path from 'node:path'
+
+
+import Pino from 'pino'
+import PinoPretty from 'pino-pretty'
+
 
 type DiveMapper = (path: any[], leaf: any) => any[]
+
+const CWF = process.cwd() + Path.sep
+
+
+function prettyPino(name: string, opts: {
+  pino?: ReturnType<typeof Pino>
+  debug?: boolean | string
+}) {
+  let pino = opts.pino
+
+  if (null == pino) {
+    let pretty = PinoPretty({
+      sync: true,
+      ignore: 'name,pid,hostname',
+      hideObject: true,
+      messageFormat: (log: any, messageKey: any, levelLabel: any, _extra: any) => {
+        const fullname = `${log.name}${log.cmp === log.name ? '' : '/' + log.cmp}`
+
+        let note = log.note ?
+          (log.note.split(',').map((n: string) =>
+            true === log[n] ? n : false === log[n] ? 'not-' + n :
+              (null == log[n] ? n : (`${(log[n] + '').replace(CWF, '')}`)))).join(' ') :
+          ''
+
+        if (log.err?.message) {
+          note += ' ' + log.err.message
+        }
+
+        const point = (log.point || '').padEnd(20)
+        let msg = `${fullname.padEnd(20)} ${point} ${note}` // JSON=${JSON.stringify(log)}`
+
+        if (true == log.break) {
+          msg += '\n'
+        }
+        return msg
+      },
+      customPrettifiers: {
+        // name: (name: any, _key: any, _log: any, extra: any) => `${extra.colors.blue(name)}`,
+      }
+    })
+
+    const level = null == opts.debug ? 'info' :
+      true === opts.debug ? 'debug' :
+        'string' == typeof opts.debug ? opts.debug :
+          'info'
+
+    pino = Pino({
+      name,
+      level,
+    },
+      pretty
+    )
+  }
+
+  return pino
+}
+
 
 function dive(node: any, depth?: number | DiveMapper, mapper?: DiveMapper): any[] {
   let d = (null == depth || 'number' != typeof depth) ? 2 : depth
@@ -94,6 +157,14 @@ function get(root: any, path: string | string[]): any {
 }
 
 
+function camelify(input: any[] | string) {
+  let parts = 'string' == typeof input ? input.split('-') : input.map(n => '' + n)
+  return parts
+    .map((p: string) => ('' === p ? '' : (p[0].toUpperCase() + p.substring(1))))
+    .join('')
+}
+
+
 function pinify(path: string[]) {
   let pin = path
     .map((p: string, i: number) =>
@@ -103,12 +174,6 @@ function pinify(path: string[]) {
 }
 
 
-function camelify(input: any[] | string) {
-  let parts = 'string' == typeof input ? input.split('-') : input.map(n => '' + n)
-  return parts
-    .map((p: string) => ('' === p ? '' : (p[0].toUpperCase() + p.substring(1))))
-    .join('')
-}
 
 
 // TODO: only works on base/name style entities - generalize
@@ -247,6 +312,9 @@ export {
   camelify,
   entity,
   order,
+
+  prettyPino,
+  Pino,
 }
 
 

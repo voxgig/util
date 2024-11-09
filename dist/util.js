@@ -1,6 +1,10 @@
 "use strict";
 /* Copyright © 2024 Voxgig Ltd, MIT License. */
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.Pino = void 0;
 exports.dive = dive;
 exports.joins = joins;
 exports.get = get;
@@ -8,6 +12,50 @@ exports.pinify = pinify;
 exports.camelify = camelify;
 exports.entity = entity;
 exports.order = order;
+exports.prettyPino = prettyPino;
+const node_path_1 = __importDefault(require("node:path"));
+const pino_1 = __importDefault(require("pino"));
+exports.Pino = pino_1.default;
+const pino_pretty_1 = __importDefault(require("pino-pretty"));
+const CWF = process.cwd() + node_path_1.default.sep;
+function prettyPino(name, opts) {
+    let pino = opts.pino;
+    if (null == pino) {
+        let pretty = (0, pino_pretty_1.default)({
+            sync: true,
+            ignore: 'name,pid,hostname',
+            hideObject: true,
+            messageFormat: (log, messageKey, levelLabel, _extra) => {
+                const fullname = `${log.name}${log.cmp === log.name ? '' : '/' + log.cmp}`;
+                let note = log.note ?
+                    (log.note.split(',').map((n) => true === log[n] ? n : false === log[n] ? 'not-' + n :
+                        (null == log[n] ? n : (`${(log[n] + '').replace(CWF, '')}`)))).join(' ') :
+                    '';
+                if (log.err?.message) {
+                    note += ' ' + log.err.message;
+                }
+                const point = (log.point || '').padEnd(20);
+                let msg = `${fullname.padEnd(20)} ${point} ${note}`; // JSON=${JSON.stringify(log)}`
+                if (true == log.break) {
+                    msg += '\n';
+                }
+                return msg;
+            },
+            customPrettifiers: {
+            // name: (name: any, _key: any, _log: any, extra: any) => `${extra.colors.blue(name)}`,
+            }
+        });
+        const level = null == opts.debug ? 'info' :
+            true === opts.debug ? 'debug' :
+                'string' == typeof opts.debug ? opts.debug :
+                    'info';
+        pino = (0, pino_1.default)({
+            name,
+            level,
+        }, pretty);
+    }
+    return pino;
+}
 function dive(node, depth, mapper) {
     let d = (null == depth || 'number' != typeof depth) ? 2 : depth;
     mapper = 'function' === typeof depth ? depth : mapper;
@@ -80,17 +128,17 @@ function get(root, path) {
     }
     return node;
 }
-function pinify(path) {
-    let pin = path
-        .map((p, i) => p + (i % 2 ? (i === path.length - 1 ? '' : ',') : ':'))
-        .join('');
-    return pin;
-}
 function camelify(input) {
     let parts = 'string' == typeof input ? input.split('-') : input.map(n => '' + n);
     return parts
         .map((p) => ('' === p ? '' : (p[0].toUpperCase() + p.substring(1))))
         .join('');
+}
+function pinify(path) {
+    let pin = path
+        .map((p, i) => p + (i % 2 ? (i === path.length - 1 ? '' : ',') : ':'))
+        .join('');
+    return pin;
 }
 // TODO: only works on base/name style entities - generalize
 function entity(model) {
