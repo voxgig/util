@@ -35,16 +35,15 @@ function prettyPino(name, opts) {
                     // May not be an actual Error instance.
                     log.err.message = log.err.message || log.err.msg;
                     if (log.err.stack) {
-                        note += ' ' + log.err.stack;
+                        note += ' ' + log.err.stack + '\n';
                     }
                     else if (log.err?.message) {
-                        note += ' ' + log.err.message;
+                        note += ' ' + log.err.message + '\n';
                     }
                 }
                 const point = (log.point || '').padEnd(20);
                 let msg = `${fullname.padEnd(22)} ${point} ` +
                     `${log.fail ? log.fail + ' ' : ''}${note}`;
-                // JSON=${JSON.stringify(log)}`
                 if (true == log.break) {
                     msg += '\n';
                 }
