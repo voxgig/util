@@ -23,7 +23,7 @@ function prettyPino(name: string, opts: {
       sync: true,
       ignore: 'name,pid,hostname',
       hideObject: true,
-      messageFormat: (log: any, messageKey: any, levelLabel: any, _extra: any) => {
+      messageFormat: (log: any, _messageKey: any, _levelLabel: any, _extra: any) => {
         const fullname = `${log.name}${log.cmp === log.name ? '' : '/' + log.cmp}`
 
         let note = log.note ?
@@ -32,12 +32,22 @@ function prettyPino(name: string, opts: {
               (null == log[n] ? n : (`${(log[n] + '').replace(CWF, '')}`)))).join(' ') :
           ''
 
-        if (log.err?.message) {
-          note += ' ' + log.err.message
+        if (log.err) {
+          // May not be an actual Error instance.
+          log.err.message = log.err.message || log.err.msg
+
+          if (log.err.stack) {
+            note += ' ' + log.err.stack
+          }
+          else if (log.err?.message) {
+            note += ' ' + log.err.message
+          }
         }
 
         const point = (log.point || '').padEnd(20)
-        let msg = `${fullname.padEnd(20)} ${point} ${note}` // JSON=${JSON.stringify(log)}`
+        let msg = `${fullname.padEnd(22)} ${point} ` +
+          `${log.fail ? log.fail + ' ' : ''}${note}`
+        // JSON=${JSON.stringify(log)}`
 
         if (true == log.break) {
           msg += '\n'
