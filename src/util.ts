@@ -9,7 +9,7 @@ import PinoPretty from 'pino-pretty'
 
 type DiveMapper = (path: any[], leaf: any) => any[]
 
-const CWF = process.cwd() + Path.sep
+const CWD = process.cwd()
 
 
 function prettyPino(name: string, opts: {
@@ -26,13 +26,18 @@ function prettyPino(name: string, opts: {
       messageFormat: (log: any, _messageKey: any, _levelLabel: any, _extra: any) => {
         const fullname = `${log.name}${log.cmp === log.name ? '' : '/' + log.cmp}`
 
-        let note = log.note ?
-          (log.note.split(',').map((n: string) =>
-            true === log[n] ? n : false === log[n] ? 'not-' + n :
-              (null == log[n] ? n : (`${(log[n] + '').replace(CWF, '')}`)))).join(' ') :
-          ''
+        // let note = log.note ?
+        //   (log.note.split(',').map((n: string) =>
+        //     true === log[n] ? n : false === log[n] ? 'not-' + n :
+        //       (null == log[n] ? n : (`${(log[n] + '').replace(CWF, '')}`)))).join(' ') :
+        //   ''
 
-        if (log.err) {
+        let note = (
+          'string' == typeof log.note ? log.note :
+            null != log.note ? JSON.stringify(log.note, null, 2) : ''
+        ).replaceAll(CWD, '.')
+
+        if (log.err && !log.err.__logged__) {
           // May not be an actual Error instance.
           log.err.message = log.err.message || log.err.msg
 
