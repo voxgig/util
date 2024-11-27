@@ -1,4 +1,5 @@
 import Pino from 'pino';
+import { Gubu } from 'gubu';
 type DiveMapper = (path: any[], leaf: any) => any[];
 declare function prettyPino(name: string, opts: {
     pino?: ReturnType<typeof Pino>;
@@ -19,4 +20,4 @@ declare function order(itemMap: Record<string, {
         include?: string;
     };
 }): any[];
-export { dive, joins, get, pinify, camelify, entity, order, prettyPino, Pino, };
+export { dive, joins, get, pinify, camelify, entity, order, prettyPino, Pino, Gubu, };
