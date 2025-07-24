@@ -36,5 +36,10 @@ declare function showChanges(log: Log, point: string, jres: {
         conflicted: string[];
     };
 }): void;
+declare function getdlog(tagin?: string, filepath?: string): ((...args: any[]) => void) & {
+    tag: string;
+    file: string;
+    log: (fp?: string) => any[];
+};
 export type { FST, Log, };
-export { dive, joins, get, pinify, camelify, entity, order, showChanges, prettyPino, Pino, Gubu, };
+export { dive, joins, get, pinify, camelify, entity, order, showChanges, getdlog, prettyPino, Pino, Gubu, };

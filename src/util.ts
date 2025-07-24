@@ -1,6 +1,7 @@
-/* Copyright © 2024 Voxgig Ltd, MIT License. */
+/* Copyright © 2024-2025 Voxgig Ltd, MIT License. */
 
 import Fs from 'node:fs'
+import Path from 'node:path'
 
 import Pino from 'pino'
 import PinoPretty from 'pino-pretty'
@@ -349,6 +350,26 @@ function showChanges(
 }
 
 
+function getdlog(
+  tagin?: string,
+  filepath?: string)
+  : ((...args: any[]) => void) &
+  { tag: string, file: string, log: (fp?: string) => any[] } {
+  const tag = tagin || '-'
+  const file = Path.basename(filepath || '-')
+  const g = global as any
+  g.__dlog__ = (g.__dlog__ || [])
+  const dlog = (...args: any[]) =>
+    g.__dlog__.push([tag, file, Date.now(), ...args])
+  dlog.tag = tag
+  dlog.file = file
+  dlog.log = (filepath?: string, f?: string | null) =>
+  (f = null == filepath ? null : Path.basename(filepath),
+    g.__dlog__.filter((n: any[]) => n[0] === tag && (null == f || n[2] === f)))
+  return dlog
+}
+
+
 export type {
   FST,
   Log,
@@ -363,6 +384,7 @@ export {
   entity,
   order,
   showChanges,
+  getdlog,
 
   prettyPino,
   Pino,

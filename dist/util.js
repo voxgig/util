@@ -1,5 +1,5 @@
 "use strict";
-/* Copyright © 2024 Voxgig Ltd, MIT License. */
+/* Copyright © 2024-2025 Voxgig Ltd, MIT License. */
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -13,7 +13,9 @@ exports.camelify = camelify;
 exports.entity = entity;
 exports.order = order;
 exports.showChanges = showChanges;
+exports.getdlog = getdlog;
 exports.prettyPino = prettyPino;
+const node_path_1 = __importDefault(require("node:path"));
 const pino_1 = __importDefault(require("pino"));
 exports.Pino = pino_1.default;
 const pino_pretty_1 = __importDefault(require("pino-pretty"));
@@ -251,5 +253,17 @@ jres) {
     for (let file of jres.files.conflicted) {
         log.info({ point, file, conflict: true, note: '** CONFLICT: ' + file.replace(CWD, '.') });
     }
+}
+function getdlog(tagin, filepath) {
+    const tag = tagin || '-';
+    const file = node_path_1.default.basename(filepath || '-');
+    const g = global;
+    g.__dlog__ = (g.__dlog__ || []);
+    const dlog = (...args) => g.__dlog__.push([tag, file, Date.now(), ...args]);
+    dlog.tag = tag;
+    dlog.file = file;
+    dlog.log = (filepath, f) => (f = null == filepath ? null : node_path_1.default.basename(filepath),
+        g.__dlog__.filter((n) => n[0] === tag && (null == f || n[2] === f)));
+    return dlog;
 }
 //# sourceMappingURL=util.js.map
