@@ -12,6 +12,7 @@ exports.pinify = pinify;
 exports.camelify = camelify;
 exports.entity = entity;
 exports.order = order;
+exports.showChanges = showChanges;
 exports.prettyPino = prettyPino;
 const pino_1 = __importDefault(require("pino"));
 exports.Pino = pino_1.default;
@@ -240,5 +241,15 @@ function order_include(items, itemMap, order_spec) {
         items = items.filter((item) => includes.includes(item.key));
     }
     return items;
+}
+function showChanges(log, point, 
+// Subset of JostracaResult
+jres) {
+    for (let file of jres.files.merged) {
+        log.info({ point, file, merge: true, note: 'merged: ' + file });
+    }
+    for (let file of jres.files.conflicted) {
+        log.info({ point, file, conflict: true, note: '** CONFLICT: ' + file });
+    }
 }
 //# sourceMappingURL=util.js.map

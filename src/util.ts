@@ -1,7 +1,6 @@
 /* Copyright © 2024 Voxgig Ltd, MIT License. */
 
-import Path from 'node:path'
-
+import Fs from 'node:fs'
 
 import Pino from 'pino'
 import PinoPretty from 'pino-pretty'
@@ -11,6 +10,18 @@ import { Gubu } from 'gubu'
 type DiveMapper = (path: any[], leaf: any) => any[]
 
 const CWD = process.cwd()
+
+
+type FST = typeof Fs
+
+type Log = {
+  trace: (...args: any[]) => void
+  debug: (...args: any[]) => void
+  info: (...args: any[]) => void
+  warn: (...args: any[]) => void
+  error: (...args: any[]) => void
+  fatal: (...args: any[]) => void
+}
 
 
 function prettyPino(name: string, opts: {
@@ -317,7 +328,31 @@ function order_include(items: any[], itemMap: any, order_spec: any): any[] {
 
 
 
+function showChanges(
+  log: Log,
+  point: string,
+  // Subset of JostracaResult
+  jres: {
+    files: {
+      merged: string[],
+      conflicted: string[],
+    }
+  }
+) {
+  for (let file of jres.files.merged) {
+    log.info({ point, file, merge: true, note: 'merged: ' + file })
+  }
 
+  for (let file of jres.files.conflicted) {
+    log.info({ point, file, conflict: true, note: '** CONFLICT: ' + file })
+  }
+}
+
+
+export type {
+  FST,
+  Log,
+}
 
 export {
   dive,
@@ -327,6 +362,7 @@ export {
   camelify,
   entity,
   order,
+  showChanges,
 
   prettyPino,
   Pino,

@@ -1,6 +1,16 @@
+import Fs from 'node:fs';
 import Pino from 'pino';
 import { Gubu } from 'gubu';
 type DiveMapper = (path: any[], leaf: any) => any[];
+type FST = typeof Fs;
+type Log = {
+    trace: (...args: any[]) => void;
+    debug: (...args: any[]) => void;
+    info: (...args: any[]) => void;
+    warn: (...args: any[]) => void;
+    error: (...args: any[]) => void;
+    fatal: (...args: any[]) => void;
+};
 declare function prettyPino(name: string, opts: {
     pino?: ReturnType<typeof Pino>;
     debug?: boolean | string;
@@ -20,4 +30,11 @@ declare function order(itemMap: Record<string, {
         include?: string;
     };
 }): any[];
-export { dive, joins, get, pinify, camelify, entity, order, prettyPino, Pino, Gubu, };
+declare function showChanges(log: Log, point: string, jres: {
+    files: {
+        merged: string[];
+        conflicted: string[];
+    };
+}): void;
+export type { FST, Log, };
+export { dive, joins, get, pinify, camelify, entity, order, showChanges, prettyPino, Pino, Gubu, };
