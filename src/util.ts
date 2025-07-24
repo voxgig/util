@@ -340,11 +340,11 @@ function showChanges(
   }
 ) {
   for (let file of jres.files.merged) {
-    log.info({ point, file, merge: true, note: 'merged: ' + file })
+    log.info({ point, file, merge: true, note: 'merged: ' + file.replace(CWD, '.') })
   }
 
   for (let file of jres.files.conflicted) {
-    log.info({ point, file, conflict: true, note: '** CONFLICT: ' + file })
+    log.info({ point, file, conflict: true, note: '** CONFLICT: ' + file.replace(CWD, '.') })
   }
 }
 
