@@ -35,7 +35,7 @@ declare function showChanges(log: Log, point: string, jres: {
         merged: string[];
         conflicted: string[];
     };
-}): void;
+}, cwd?: string): void;
 declare function getdlog(tagin?: string, filepath?: string): ((...args: any[]) => void) & {
     tag: string;
     file: string;

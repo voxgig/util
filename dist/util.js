@@ -246,12 +246,14 @@ function order_include(items, itemMap, order_spec) {
 }
 function showChanges(log, point, 
 // Subset of JostracaResult
-jres) {
+jres, cwd) {
+    cwd = null == cwd ? CWD : cwd;
+    cwd = cwd.endsWith(node_path_1.default.sep) ? cwd : cwd + node_path_1.default.sep;
     for (let file of jres.files.merged) {
-        log.info({ point, file, merge: true, note: 'merged: ' + file.replace(CWD, '.') });
+        log.info({ point, file, merge: true, note: 'merged: ' + file.replace(cwd, '') });
     }
     for (let file of jres.files.conflicted) {
-        log.info({ point, file, conflict: true, note: '** CONFLICT: ' + file.replace(CWD, '.') });
+        log.info({ point, file, conflict: true, note: '** CONFLICT: ' + file.replace(cwd, '') });
     }
 }
 function getdlog(tagin, filepath) {
@@ -262,8 +264,8 @@ function getdlog(tagin, filepath) {
     const dlog = (...args) => g.__dlog__.push([tag, file, Date.now(), ...args]);
     dlog.tag = tag;
     dlog.file = file;
-    dlog.log = (filepath, f) => (f = null == filepath ? null : node_path_1.default.basename(filepath),
-        g.__dlog__.filter((n) => n[0] === tag && (null == f || n[2] === f)));
+    dlog.log = (filepath, __f) => (__f = null == filepath ? null : node_path_1.default.basename(filepath),
+        g.__dlog__.filter((n) => n[0] === tag && (null == __f || n[2] === __f)));
     return dlog;
 }
 //# sourceMappingURL=util.js.map

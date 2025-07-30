@@ -338,14 +338,17 @@ function showChanges(
       merged: string[],
       conflicted: string[],
     }
-  }
+  },
+  cwd?: string
 ) {
+  cwd = null == cwd ? CWD : cwd
+  cwd = cwd.endsWith(Path.sep) ? cwd : cwd + Path.sep
   for (let file of jres.files.merged) {
-    log.info({ point, file, merge: true, note: 'merged: ' + file.replace(CWD, '.') })
+    log.info({ point, file, merge: true, note: 'merged: ' + file.replace(cwd, '') })
   }
 
   for (let file of jres.files.conflicted) {
-    log.info({ point, file, conflict: true, note: '** CONFLICT: ' + file.replace(CWD, '.') })
+    log.info({ point, file, conflict: true, note: '** CONFLICT: ' + file.replace(cwd, '') })
   }
 }
 
@@ -363,9 +366,9 @@ function getdlog(
     g.__dlog__.push([tag, file, Date.now(), ...args])
   dlog.tag = tag
   dlog.file = file
-  dlog.log = (filepath?: string, f?: string | null) =>
-  (f = null == filepath ? null : Path.basename(filepath),
-    g.__dlog__.filter((n: any[]) => n[0] === tag && (null == f || n[2] === f)))
+  dlog.log = (filepath?: string, __f?: string | null) =>
+  (__f = null == filepath ? null : Path.basename(filepath),
+    g.__dlog__.filter((n: any[]) => n[0] === tag && (null == __f || n[2] === __f)))
   return dlog
 }
 
