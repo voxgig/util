@@ -36,34 +36,38 @@ function prettyPino(name: string, opts: {
       sync: true,
       ignore: 'name,pid,hostname',
       hideObject: true,
-      messageFormat: (log: any, _messageKey: any, _levelLabel: any, _extra: any) => {
+      messageFormat: (log: any, _messageKey: any, levelLabel: any, _extra: any) => {
         const fullname = `${log.name}${log.cmp === log.name ? '' : '/' + log.cmp}`
-
-        // let note = log.note ?
-        //   (log.note.split(',').map((n: string) =>
-        //     true === log[n] ? n : false === log[n] ? 'not-' + n :
-        //       (null == log[n] ? n : (`${(log[n] + '').replace(CWF, '')}`)))).join(' ') :
-        //   ''
 
         let note = (
           'string' == typeof log.note ? log.note :
-            null != log.note ? JSON.stringify(log.note, null, 2) : ''
+            null != log.note ? stringify(log.note, null, 2) : ''
         ).replaceAll(CWD, '.')
 
         if (log.err && !log.err.__logged__) {
+          log.err.__logged__ = true
+
           // May not be an actual Error instance.
-          log.err.message = log.err.message || log.err.msg
+          log.err.message = log.err.message ?? log.err.msg
 
           if (log.err.stack) {
-            note += ' ' + log.err.stack + '\n'
+            note += '\n  \n  ' + log.err.stack
           }
-          else if (log.err?.message) {
-            note += ' ' + log.err.message + '\n'
+          else if (log.err.message) {
+            note += '\n  ' + log.err.message.replace(/\n/g, '  \n')
           }
+
+          for (let ek in log.err) {
+            if (!(ek in { type: 1, name: 1, message: 1, stack: 1, __logged__: 1 })) {
+              note += `\n  ${ek}: ${stringify(log.err[ek]).replace(/\n/g, '  \n')}`
+            }
+          }
+
+          note += '\n  '
         }
 
         const point = (log.point || '').padEnd(20)
-        let msg = `${fullname.padEnd(22)} ${point} ` +
+        let msg = `${fullname.padEnd(22).padStart(6 - levelLabel.length)} ${point} ` +
           `${log.fail ? log.fail + ' ' : ''}${note}`
 
         if (true == log.break) {
@@ -373,21 +377,61 @@ function getdlog(
 }
 
 
+function stringify(val?: any, replacer?: any, indent?: any) {
+  return JSON.stringify(decircular(val), replacer, indent)
+}
+
+
+// Based on:
+// Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
+// MIT License Version 1.0.0
+function decircular(object?: any) {
+  const seenObjects = new WeakMap()
+
+  function internalDecircular(value: any, path: string[] = []) {
+    if (!(value !== null && typeof value === 'object')) {
+      return value
+    }
+
+    const existingPath = seenObjects.get(value)
+    if (existingPath) {
+      return `[Circular *${existingPath.join('.')}]`
+    }
+
+    seenObjects.set(value, path)
+
+    const newValue: any = value instanceof Error ? value : Array.isArray(value) ? [] : {}
+
+    for (const [key2, value2] of Object.entries(value)) {
+      newValue[key2] = internalDecircular(value2, [...path, key2])
+    }
+
+    seenObjects.delete(value)
+
+    return newValue
+  }
+
+  return internalDecircular(object)
+}
+
+
 export type {
   FST,
   Log,
 }
 
 export {
-  dive,
-  joins,
-  get,
-  pinify,
   camelify,
+  decircular,
+  dive,
   entity,
-  order,
-  showChanges,
+  get,
   getdlog,
+  joins,
+  order,
+  pinify,
+  showChanges,
+  stringify,
 
   prettyPino,
   Pino,

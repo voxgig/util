@@ -14,7 +14,7 @@ type Log = {
 declare function prettyPino(name: string, opts: {
     pino?: ReturnType<typeof Pino>;
     debug?: boolean | string;
-}): import("pino").Logger<string, boolean>;
+}): Pino.Logger<string, boolean>;
 declare function dive(node: any, depth?: number | DiveMapper, mapper?: DiveMapper): any[];
 declare function joins(arr: any[], ...seps: string[]): string;
 declare function get(root: any, path: string | string[]): any;
@@ -41,5 +41,7 @@ declare function getdlog(tagin?: string, filepath?: string): ((...args: any[]) =
     file: string;
     log: (fp?: string) => any[];
 };
+declare function stringify(val?: any, replacer?: any, indent?: any): string;
+declare function decircular(object?: any): any;
 export type { FST, Log, };
-export { dive, joins, get, pinify, camelify, entity, order, showChanges, getdlog, prettyPino, Pino, Gubu, };
+export { camelify, decircular, dive, entity, get, getdlog, joins, order, pinify, showChanges, stringify, prettyPino, Pino, Gubu, };
