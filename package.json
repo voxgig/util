@@ -1,6 +1,6 @@
 {
   "name": "@voxgig/util",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "main": "dist/util.js",
   "type": "commonjs",
   "types": "dist/util.d.ts",
@@ -39,7 +39,7 @@
   },
   "devDependencies": {
     "@hapi/code": "^9.0.3",
-    "@types/node": "24.10.0",
+    "@types/node": "25.2.3",
     "typescript": "^5.9.3"
   }
 }
