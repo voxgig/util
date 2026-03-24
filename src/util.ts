@@ -97,48 +97,38 @@ function prettyPino(name: string, opts: {
 }
 
 
+function hasOwnKeys(obj: any): boolean {
+  for (const _ in obj) return true
+  return false
+}
+
+
+function diveInternal(node: any, d: number, prefix: string[], items: any[]): void {
+  for (const [key, child] of Object.entries(node || {})) {
+    if ('$' === key) {
+      items.push([prefix.slice(), child])
+    }
+    else if (
+      d <= 1 ||
+      null == child ||
+      'object' !== typeof child ||
+      !hasOwnKeys(child)
+    ) {
+      items.push([[...prefix, key], child])
+    }
+    else {
+      diveInternal(child, d - 1, [...prefix, key], items)
+    }
+  }
+}
+
+
 function dive(node: any, depth?: number | DiveMapper, mapper?: DiveMapper): any[] {
   let d = (null == depth || 'number' != typeof depth) ? 2 : depth
   mapper = 'function' === typeof depth ? depth : mapper
 
   let items: any[] = []
-
-  Object.entries(node || {}).reduce(
-    (items: any[], entry: any[]) => {
-      let key = entry[0]
-      let child = entry[1]
-
-      // console.log('CHILD', d, key, child)
-
-      if ('$' === key) {
-        // console.log('BBB', d)
-        items.push([[], child])
-      }
-      else if (
-        d <= 1 ||
-        null == child ||
-        'object' !== typeof child ||
-        0 === Object.keys(child).length
-      ) {
-        // console.log('AAA', d)
-        items.push([[key], child])
-      }
-      else {
-        // console.log('CCC', d)
-        let children = dive(child, d - 1)
-        children = children.map(child => {
-          child[0].unshift(key)
-          return child
-        })
-        items.push(...children)
-      }
-
-      return items
-    },
-    items
-  )
-
-  // console.log('ITEMS', items)
+  diveInternal(node, d, [], items)
 
   if (mapper) {
     return items.reduce(((a, entry) => {
@@ -224,7 +214,7 @@ function entity(model: any) {
 
     let valid = ent.valid || {}
 
-    Object.entries(ent.field).map((n: any[]) => {
+    Object.entries(ent.field).forEach((n: any[]) => {
       let name = n[0]
       let field = n[1]
 
@@ -284,19 +274,23 @@ function order_sort(items: any[], itemMap: any, order_spec: any): any[] {
       order_spec.sort.split(/\s*,\s*/).map((s: string) => s.trim()) :
       order_spec.sort
 
+    const key_order_set = new Set(
+      key_order.filter((k: string) => k !== 'human$' && k !== 'alpha$')
+    )
+
     key_order = key_order
       .map((k: string, _: any) =>
         'human$' === k ? (
           _ = 1 + items.reduce((a: number, n: any) => (Math.max(a, n.title.length)), 0),
           items
-            .filter((item: any) => !key_order.includes(item.key))
+            .filter((item: any) => !key_order_set.has(item.key))
             .map((item: any) => (item.title$ = item.title.padStart(_, '0'), item))
             .sort((a: any, b: any) => a.title$ > b.title$ ? 1 : a.title$ < b.title$ ? -1 : 0)
             .map((item: any) => item.key)
         ) :
           'alpha$' === k ? (
             items
-              .filter((item: any) => !key_order.includes(item.key))
+              .filter((item: any) => !key_order_set.has(item.key))
               .sort((a: any, b: any) => a.title > b.title ? 1 : a.title < b.title ? -1 : 0)
               .map((item: any) => item.key)
           ) :
@@ -315,7 +309,8 @@ function order_exclude(items: any[], itemMap: any, order_spec: any): any[] {
     let excludes = 'string' === typeof order_spec.exclude ?
       order_spec.exclude.split(/\s*,\s*/).map((s: string) => s.trim()) :
       order_spec.exclude
-    items = items.filter((item: any) => !excludes.includes(item.key))
+    const excludeSet = new Set(excludes)
+    items = items.filter((item: any) => !excludeSet.has(item.key))
   }
   return items
 }
@@ -325,7 +320,8 @@ function order_include(items: any[], itemMap: any, order_spec: any): any[] {
     let includes = 'string' === typeof order_spec.include ?
       order_spec.include.split(/\s*,\s*/).map((s: string) => s.trim()) :
       order_spec.include
-    items = items.filter((item: any) => includes.includes(item.key))
+    const includeSet = new Set(includes)
+    items = items.filter((item: any) => includeSet.has(item.key))
   }
   return items
 }
@@ -387,8 +383,9 @@ function stringify(val?: any, replacer?: any, indent?: any) {
 // MIT License Version 1.0.0
 function decircular(object?: any) {
   const seenObjects = new WeakMap()
+  const path: string[] = []
 
-  function internalDecircular(value: any, path: string[] = []) {
+  function internalDecircular(value: any): any {
     if (!(value !== null && typeof value === 'object')) {
       return value
     }
@@ -398,12 +395,14 @@ function decircular(object?: any) {
       return `[Circular *${existingPath.join('.')}]`
     }
 
-    seenObjects.set(value, path)
+    seenObjects.set(value, path.slice())
 
     const newValue: any = value instanceof Error ? value : Array.isArray(value) ? [] : {}
 
     for (const [key2, value2] of Object.entries(value)) {
-      newValue[key2] = internalDecircular(value2, [...path, key2])
+      path.push(key2)
+      newValue[key2] = internalDecircular(value2)
+      path.pop()
     }
 
     seenObjects.delete(value)

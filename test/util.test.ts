@@ -8,12 +8,14 @@ import { Gubu } from 'gubu'
 
 import {
   camelify,
+  decircular,
   dive,
   get,
   joins,
   pinify,
   entity,
   order,
+  stringify,
 } from '../'
 
 
@@ -98,6 +100,47 @@ describe('util', () => {
     const g0 = Gubu.build(s0['qaz/zed'].valid_json)
     // console.log(g0.stringify())
     expect(g0.stringify()).equal('{"foo":{"a":"Number"},"$$":"Open"}')
+  })
+
+
+  test('stringify', async () => {
+    expect(stringify({ a: 1, b: 'hello' })).equal('{"a":1,"b":"hello"}')
+    expect(stringify(null)).equal('null')
+    expect(stringify(undefined)).equal(undefined as any)
+    expect(stringify(42)).equal('42')
+  })
+
+
+  test('decircular', async () => {
+    // Simple non-circular object passes through
+    expect(decircular({ a: 1, b: { c: 2 } })).equal({ a: 1, b: { c: 2 } })
+
+    // Handles null/undefined/primitives
+    expect(decircular(null)).equal(null)
+    expect(decircular(undefined)).equal(undefined)
+    expect(decircular(42)).equal(42)
+    expect(decircular('hello')).equal('hello')
+
+    // Detects circular reference
+    const obj: any = { a: 1 }
+    obj.self = obj
+    const result = decircular(obj)
+    expect(result.a).equal(1)
+    expect(result.self).equal('[Circular *]')
+
+    // Handles nested circular reference
+    const parent: any = { child: { name: 'kid' } }
+    parent.child.parent = parent
+    const result2 = decircular(parent)
+    expect(result2.child.name).equal('kid')
+    expect(result2.child.parent).equal('[Circular *]')
+
+    // Handles arrays
+    expect(decircular([1, 2, { a: 3 }])).equal([1, 2, { a: 3 }])
+
+    // Deeply nested non-circular object
+    const deep = { a: { b: { c: { d: { e: 5 } } } } }
+    expect(decircular(deep)).equal({ a: { b: { c: { d: { e: 5 } } } } })
   })
 
 

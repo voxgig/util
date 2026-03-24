@@ -75,37 +75,32 @@ function prettyPino(name, opts) {
     }
     return pino;
 }
-function dive(node, depth, mapper) {
-    let d = (null == depth || 'number' != typeof depth) ? 2 : depth;
-    mapper = 'function' === typeof depth ? depth : mapper;
-    let items = [];
-    Object.entries(node || {}).reduce((items, entry) => {
-        let key = entry[0];
-        let child = entry[1];
-        // console.log('CHILD', d, key, child)
+function hasOwnKeys(obj) {
+    for (const _ in obj)
+        return true;
+    return false;
+}
+function diveInternal(node, d, prefix, items) {
+    for (const [key, child] of Object.entries(node || {})) {
         if ('$' === key) {
-            // console.log('BBB', d)
-            items.push([[], child]);
+            items.push([prefix.slice(), child]);
         }
         else if (d <= 1 ||
             null == child ||
             'object' !== typeof child ||
-            0 === Object.keys(child).length) {
-            // console.log('AAA', d)
-            items.push([[key], child]);
+            !hasOwnKeys(child)) {
+            items.push([[...prefix, key], child]);
         }
         else {
-            // console.log('CCC', d)
-            let children = dive(child, d - 1);
-            children = children.map(child => {
-                child[0].unshift(key);
-                return child;
-            });
-            items.push(...children);
+            diveInternal(child, d - 1, [...prefix, key], items);
         }
-        return items;
-    }, items);
-    // console.log('ITEMS', items)
+    }
+}
+function dive(node, depth, mapper) {
+    let d = (null == depth || 'number' != typeof depth) ? 2 : depth;
+    mapper = 'function' === typeof depth ? depth : mapper;
+    let items = [];
+    diveInternal(node, d, [], items);
     if (mapper) {
         return items.reduce(((a, entry) => {
             entry = mapper(entry[0], entry[1]);
@@ -171,7 +166,7 @@ function entity(model) {
         let ent = entry[1];
         // console.log('ENT', path, ent)
         let valid = ent.valid || {};
-        Object.entries(ent.field).map((n) => {
+        Object.entries(ent.field).forEach((n) => {
             let name = n[0];
             let field = n[1];
             // console.log('FV', name, field)
@@ -213,15 +208,16 @@ function order_sort(items, itemMap, order_spec) {
         let key_order = 'string' === typeof order_spec.sort ?
             order_spec.sort.split(/\s*,\s*/).map((s) => s.trim()) :
             order_spec.sort;
+        const key_order_set = new Set(key_order.filter((k) => k !== 'human$' && k !== 'alpha$'));
         key_order = key_order
             .map((k, _) => 'human$' === k ? (_ = 1 + items.reduce((a, n) => (Math.max(a, n.title.length)), 0),
             items
-                .filter((item) => !key_order.includes(item.key))
+                .filter((item) => !key_order_set.has(item.key))
                 .map((item) => (item.title$ = item.title.padStart(_, '0'), item))
                 .sort((a, b) => a.title$ > b.title$ ? 1 : a.title$ < b.title$ ? -1 : 0)
                 .map((item) => item.key)) :
             'alpha$' === k ? (items
-                .filter((item) => !key_order.includes(item.key))
+                .filter((item) => !key_order_set.has(item.key))
                 .sort((a, b) => a.title > b.title ? 1 : a.title < b.title ? -1 : 0)
                 .map((item) => item.key)) :
                 k)
@@ -235,7 +231,8 @@ function order_exclude(items, itemMap, order_spec) {
         let excludes = 'string' === typeof order_spec.exclude ?
             order_spec.exclude.split(/\s*,\s*/).map((s) => s.trim()) :
             order_spec.exclude;
-        items = items.filter((item) => !excludes.includes(item.key));
+        const excludeSet = new Set(excludes);
+        items = items.filter((item) => !excludeSet.has(item.key));
     }
     return items;
 }
@@ -244,7 +241,8 @@ function order_include(items, itemMap, order_spec) {
         let includes = 'string' === typeof order_spec.include ?
             order_spec.include.split(/\s*,\s*/).map((s) => s.trim()) :
             order_spec.include;
-        items = items.filter((item) => includes.includes(item.key));
+        const includeSet = new Set(includes);
+        items = items.filter((item) => includeSet.has(item.key));
     }
     return items;
 }
@@ -280,7 +278,8 @@ function stringify(val, replacer, indent) {
 // MIT License Version 1.0.0
 function decircular(object) {
     const seenObjects = new WeakMap();
-    function internalDecircular(value, path = []) {
+    const path = [];
+    function internalDecircular(value) {
         if (!(value !== null && typeof value === 'object')) {
             return value;
         }
@@ -288,10 +287,12 @@ function decircular(object) {
         if (existingPath) {
             return `[Circular *${existingPath.join('.')}]`;
         }
-        seenObjects.set(value, path);
+        seenObjects.set(value, path.slice());
         const newValue = value instanceof Error ? value : Array.isArray(value) ? [] : {};
         for (const [key2, value2] of Object.entries(value)) {
-            newValue[key2] = internalDecircular(value2, [...path, key2]);
+            path.push(key2);
+            newValue[key2] = internalDecircular(value2);
+            path.pop();
         }
         seenObjects.delete(value);
         return newValue;

@@ -72,6 +72,38 @@ const __1 = require("../");
         // console.log(g0.stringify())
         (0, code_1.expect)(g0.stringify()).equal('{"foo":{"a":"Number"},"$$":"Open"}');
     });
+    (0, node_test_1.test)('stringify', async () => {
+        (0, code_1.expect)((0, __1.stringify)({ a: 1, b: 'hello' })).equal('{"a":1,"b":"hello"}');
+        (0, code_1.expect)((0, __1.stringify)(null)).equal('null');
+        (0, code_1.expect)((0, __1.stringify)(undefined)).equal(undefined);
+        (0, code_1.expect)((0, __1.stringify)(42)).equal('42');
+    });
+    (0, node_test_1.test)('decircular', async () => {
+        // Simple non-circular object passes through
+        (0, code_1.expect)((0, __1.decircular)({ a: 1, b: { c: 2 } })).equal({ a: 1, b: { c: 2 } });
+        // Handles null/undefined/primitives
+        (0, code_1.expect)((0, __1.decircular)(null)).equal(null);
+        (0, code_1.expect)((0, __1.decircular)(undefined)).equal(undefined);
+        (0, code_1.expect)((0, __1.decircular)(42)).equal(42);
+        (0, code_1.expect)((0, __1.decircular)('hello')).equal('hello');
+        // Detects circular reference
+        const obj = { a: 1 };
+        obj.self = obj;
+        const result = (0, __1.decircular)(obj);
+        (0, code_1.expect)(result.a).equal(1);
+        (0, code_1.expect)(result.self).equal('[Circular *]');
+        // Handles nested circular reference
+        const parent = { child: { name: 'kid' } };
+        parent.child.parent = parent;
+        const result2 = (0, __1.decircular)(parent);
+        (0, code_1.expect)(result2.child.name).equal('kid');
+        (0, code_1.expect)(result2.child.parent).equal('[Circular *]');
+        // Handles arrays
+        (0, code_1.expect)((0, __1.decircular)([1, 2, { a: 3 }])).equal([1, 2, { a: 3 }]);
+        // Deeply nested non-circular object
+        const deep = { a: { b: { c: { d: { e: 5 } } } } };
+        (0, code_1.expect)((0, __1.decircular)(deep)).equal({ a: { b: { c: { d: { e: 5 } } } } });
+    });
     (0, node_test_1.test)('order', async () => {
         (0, code_1.expect)((0, __1.order)({}, {})).equal([]);
         const items = {
