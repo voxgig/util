@@ -6,7 +6,7 @@ import Path from 'node:path'
 import Pino from 'pino'
 import PinoPretty from 'pino-pretty'
 
-import { Gubu } from 'gubu'
+import { Shape } from 'shape'
 
 type DiveMapper = (path: any[], leaf: any) => any[]
 
@@ -434,7 +434,7 @@ export {
 
   prettyPino,
   Pino,
-  Gubu,
+  Shape,
 }
 
 

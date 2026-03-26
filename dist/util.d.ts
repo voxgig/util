@@ -1,6 +1,6 @@
 import Fs from 'node:fs';
 import Pino from 'pino';
-import { Gubu } from 'gubu';
+import { Shape } from 'shape';
 type DiveMapper = (path: any[], leaf: any) => any[];
 type FST = typeof Fs;
 type Log = {
@@ -44,4 +44,4 @@ declare function getdlog(tagin?: string, filepath?: string): ((...args: any[]) =
 declare function stringify(val?: any, replacer?: any, indent?: any): string;
 declare function decircular(object?: any): any;
 export type { FST, Log, };
-export { camelify, decircular, dive, entity, get, getdlog, joins, order, pinify, showChanges, stringify, prettyPino, Pino, Gubu, };
+export { camelify, decircular, dive, entity, get, getdlog, joins, order, pinify, showChanges, stringify, prettyPino, Pino, Shape, };

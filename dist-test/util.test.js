@@ -1,23 +1,26 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const node_test_1 = require("node:test");
-const code_1 = require("@hapi/code");
-const gubu_1 = require("gubu");
+const node_assert_1 = __importDefault(require("node:assert"));
+const shape_1 = require("shape");
 const __1 = require("../");
 (0, node_test_1.describe)('util', () => {
     (0, node_test_1.test)('happy', async () => {
-        (0, code_1.expect)(typeof __1.camelify).equal('function');
-        (0, code_1.expect)(typeof __1.dive).equal('function');
-        (0, code_1.expect)(typeof __1.get).equal('function');
-        (0, code_1.expect)(typeof __1.joins).equal('function');
-        (0, code_1.expect)(typeof __1.pinify).equal('function');
-        (0, code_1.expect)(typeof __1.entity).equal('function');
+        node_assert_1.default.equal(typeof __1.camelify, 'function');
+        node_assert_1.default.equal(typeof __1.dive, 'function');
+        node_assert_1.default.equal(typeof __1.get, 'function');
+        node_assert_1.default.equal(typeof __1.joins, 'function');
+        node_assert_1.default.equal(typeof __1.pinify, 'function');
+        node_assert_1.default.equal(typeof __1.entity, 'function');
     });
     (0, node_test_1.test)('camelify', async () => {
-        (0, code_1.expect)((0, __1.camelify)('foo-bar')).equal('FooBar');
+        node_assert_1.default.equal((0, __1.camelify)('foo-bar'), 'FooBar');
     });
     (0, node_test_1.test)('dive', async () => {
-        (0, code_1.expect)((0, __1.dive)({
+        node_assert_1.default.deepStrictEqual((0, __1.dive)({
             color: {
                 red: { x: 1 },
                 green: { x: 2 },
@@ -26,7 +29,7 @@ const __1 = require("../");
                 mercury: { y: { z: 3 } },
                 venus: { y: { z: 4 } },
             }
-        })).equal([
+        }), [
             [['color', 'red'], { x: 1 }],
             [['color', 'green'], { x: 2 }],
             [['planet', 'mercury'], { y: { z: 3 } }],
@@ -34,14 +37,13 @@ const __1 = require("../");
         ]);
     });
     (0, node_test_1.test)('get', async () => {
-        (0, code_1.expect)((0, __1.get)({ a: { b: 1 } }, 'a.b')).equal(1);
+        node_assert_1.default.equal((0, __1.get)({ a: { b: 1 } }, 'a.b'), 1);
     });
     (0, node_test_1.test)('joins', async () => {
-        (0, code_1.expect)((0, __1.joins)(['a', 1, 'b', 2, 'c', 3, 'd', 4, 'e', 5, 'f', 6], ':', ',', '/'))
-            .equal('a:1,b:2/c:3,d:4/e:5,f:6');
+        node_assert_1.default.equal((0, __1.joins)(['a', 1, 'b', 2, 'c', 3, 'd', 4, 'e', 5, 'f', 6], ':', ',', '/'), 'a:1,b:2/c:3,d:4/e:5,f:6');
     });
     (0, node_test_1.test)('pinify', async () => {
-        (0, code_1.expect)((0, __1.pinify)(['a', 'b', 'c', 'd'])).equal('a:b,c:d');
+        node_assert_1.default.equal((0, __1.pinify)(['a', 'b', 'c', 'd']), 'a:b,c:d');
     });
     (0, node_test_1.test)('entity', async () => {
         const s0 = (0, __1.entity)({
@@ -65,83 +67,83 @@ const __1 = require("../");
             }
         });
         // console.dir(s0, { depth: null })
-        (0, code_1.expect)(s0).equal({
+        node_assert_1.default.deepStrictEqual(s0, {
             'qaz/zed': { valid_json: { '$$': 'Open', foo: { a: 'Number' } } }
         });
-        const g0 = gubu_1.Gubu.build(s0['qaz/zed'].valid_json);
+        const g0 = shape_1.Shape.build(s0['qaz/zed'].valid_json);
         // console.log(g0.stringify())
-        (0, code_1.expect)(g0.stringify()).equal('{"foo":{"a":"Number"},"$$":"Open"}');
+        node_assert_1.default.equal(g0.stringify(), '{"foo":{"a":"Number"},"$$":"Open"}');
     });
     (0, node_test_1.test)('stringify', async () => {
-        (0, code_1.expect)((0, __1.stringify)({ a: 1, b: 'hello' })).equal('{"a":1,"b":"hello"}');
-        (0, code_1.expect)((0, __1.stringify)(null)).equal('null');
-        (0, code_1.expect)((0, __1.stringify)(undefined)).equal(undefined);
-        (0, code_1.expect)((0, __1.stringify)(42)).equal('42');
+        node_assert_1.default.equal((0, __1.stringify)({ a: 1, b: 'hello' }), '{"a":1,"b":"hello"}');
+        node_assert_1.default.equal((0, __1.stringify)(null), 'null');
+        node_assert_1.default.equal((0, __1.stringify)(undefined), undefined);
+        node_assert_1.default.equal((0, __1.stringify)(42), '42');
     });
     (0, node_test_1.test)('decircular', async () => {
         // Simple non-circular object passes through
-        (0, code_1.expect)((0, __1.decircular)({ a: 1, b: { c: 2 } })).equal({ a: 1, b: { c: 2 } });
+        node_assert_1.default.deepStrictEqual((0, __1.decircular)({ a: 1, b: { c: 2 } }), { a: 1, b: { c: 2 } });
         // Handles null/undefined/primitives
-        (0, code_1.expect)((0, __1.decircular)(null)).equal(null);
-        (0, code_1.expect)((0, __1.decircular)(undefined)).equal(undefined);
-        (0, code_1.expect)((0, __1.decircular)(42)).equal(42);
-        (0, code_1.expect)((0, __1.decircular)('hello')).equal('hello');
+        node_assert_1.default.equal((0, __1.decircular)(null), null);
+        node_assert_1.default.equal((0, __1.decircular)(undefined), undefined);
+        node_assert_1.default.equal((0, __1.decircular)(42), 42);
+        node_assert_1.default.equal((0, __1.decircular)('hello'), 'hello');
         // Detects circular reference
         const obj = { a: 1 };
         obj.self = obj;
         const result = (0, __1.decircular)(obj);
-        (0, code_1.expect)(result.a).equal(1);
-        (0, code_1.expect)(result.self).equal('[Circular *]');
+        node_assert_1.default.equal(result.a, 1);
+        node_assert_1.default.equal(result.self, '[Circular *]');
         // Handles nested circular reference
         const parent = { child: { name: 'kid' } };
         parent.child.parent = parent;
         const result2 = (0, __1.decircular)(parent);
-        (0, code_1.expect)(result2.child.name).equal('kid');
-        (0, code_1.expect)(result2.child.parent).equal('[Circular *]');
+        node_assert_1.default.equal(result2.child.name, 'kid');
+        node_assert_1.default.equal(result2.child.parent, '[Circular *]');
         // Handles arrays
-        (0, code_1.expect)((0, __1.decircular)([1, 2, { a: 3 }])).equal([1, 2, { a: 3 }]);
+        node_assert_1.default.deepStrictEqual((0, __1.decircular)([1, 2, { a: 3 }]), [1, 2, { a: 3 }]);
         // Deeply nested non-circular object
         const deep = { a: { b: { c: { d: { e: 5 } } } } };
-        (0, code_1.expect)((0, __1.decircular)(deep)).equal({ a: { b: { c: { d: { e: 5 } } } } });
+        node_assert_1.default.deepStrictEqual((0, __1.decircular)(deep), { a: { b: { c: { d: { e: 5 } } } } });
     });
     (0, node_test_1.test)('order', async () => {
-        (0, code_1.expect)((0, __1.order)({}, {})).equal([]);
+        node_assert_1.default.deepStrictEqual((0, __1.order)({}, {}), []);
         const items = {
             code: { title: 'Coding' },
             tech: { title: 'Technology' },
             devr: { title: 'Developer Relations' },
         };
-        (0, code_1.expect)((0, __1.order)(items, {})).equal([
+        node_assert_1.default.deepStrictEqual((0, __1.order)(items, {}), [
             { key: 'code', title: 'Coding' },
             { key: 'tech', title: 'Technology' },
             { key: 'devr', title: 'Developer Relations' },
         ]);
-        (0, code_1.expect)((0, __1.order)(items, { order: { exclude: 'code,tech' } })).equal([
+        node_assert_1.default.deepStrictEqual((0, __1.order)(items, { order: { exclude: 'code,tech' } }), [
             { key: 'devr', title: 'Developer Relations' },
         ]);
-        (0, code_1.expect)((0, __1.order)(items, { order: { include: 'code,tech' } })).equal([
+        node_assert_1.default.deepStrictEqual((0, __1.order)(items, { order: { include: 'code,tech' } }), [
             { key: 'code', title: 'Coding' },
             { key: 'tech', title: 'Technology' },
         ]);
         // exclude wins
-        (0, code_1.expect)((0, __1.order)(items, { order: { exclude: 'code', include: 'code,tech' } })).equal([
+        node_assert_1.default.deepStrictEqual((0, __1.order)(items, { order: { exclude: 'code', include: 'code,tech' } }), [
             { key: 'tech', title: 'Technology' },
         ]);
-        (0, code_1.expect)((0, __1.order)(items, { order: {} })).equal([
+        node_assert_1.default.deepStrictEqual((0, __1.order)(items, { order: {} }), [
             { key: 'code', title: 'Coding' },
             { key: 'tech', title: 'Technology' },
             { key: 'devr', title: 'Developer Relations' },
         ]);
-        (0, code_1.expect)((0, __1.order)(items, { order: { sort: 'alpha$' } })).equal([
+        node_assert_1.default.deepStrictEqual((0, __1.order)(items, { order: { sort: 'alpha$' } }), [
             { key: 'code', title: 'Coding' },
             { key: 'devr', title: 'Developer Relations' },
             { key: 'tech', title: 'Technology' },
         ]);
-        (0, code_1.expect)((0, __1.order)(items, { order: { sort: 'tech,code' } })).equal([
+        node_assert_1.default.deepStrictEqual((0, __1.order)(items, { order: { sort: 'tech,code' } }), [
             { key: 'tech', title: 'Technology' },
             { key: 'code', title: 'Coding' },
         ]);
-        (0, code_1.expect)((0, __1.order)(items, { order: { sort: 'tech,alpha$' } })).equal([
+        node_assert_1.default.deepStrictEqual((0, __1.order)(items, { order: { sort: 'tech,alpha$' } }), [
             { key: 'tech', title: 'Technology' },
             { key: 'code', title: 'Coding' },
             { key: 'devr', title: 'Developer Relations' },
@@ -152,13 +154,13 @@ const __1 = require("../");
             '2': { title: '2' },
             'tech': { title: 'Technology' },
         };
-        (0, code_1.expect)((0, __1.order)(nums, { order: { sort: 'alpha$' } })).equal([
+        node_assert_1.default.deepStrictEqual((0, __1.order)(nums, { order: { sort: 'alpha$' } }), [
             { key: '1', title: '1' },
             { key: '10', title: '10' },
             { key: '2', title: '2' },
             { key: 'tech', title: 'Technology' },
         ]);
-        (0, code_1.expect)((0, __1.order)(nums, { order: { sort: 'human$' } })).equal([
+        node_assert_1.default.deepStrictEqual((0, __1.order)(nums, { order: { sort: 'human$' } }), [
             { title: '1', key: '1', 'title$': '00000000001' },
             { title: '2', key: '2', 'title$': '00000000002' },
             { title: '10', key: '10', 'title$': '00000000010' },

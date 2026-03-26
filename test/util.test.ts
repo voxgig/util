@@ -1,9 +1,9 @@
 
 import { test, describe } from 'node:test'
-import { expect } from '@hapi/code'
+import assert from 'node:assert'
 
 
-import { Gubu } from 'gubu'
+import { Shape } from 'shape'
 
 
 import {
@@ -22,22 +22,22 @@ import {
 describe('util', () => {
 
   test('happy', async () => {
-    expect(typeof camelify).equal('function')
-    expect(typeof dive).equal('function')
-    expect(typeof get).equal('function')
-    expect(typeof joins).equal('function')
-    expect(typeof pinify).equal('function')
-    expect(typeof entity).equal('function')
+    assert.equal(typeof camelify, 'function')
+    assert.equal(typeof dive, 'function')
+    assert.equal(typeof get, 'function')
+    assert.equal(typeof joins, 'function')
+    assert.equal(typeof pinify, 'function')
+    assert.equal(typeof entity, 'function')
   })
 
 
   test('camelify', async () => {
-    expect(camelify('foo-bar')).equal('FooBar')
+    assert.equal(camelify('foo-bar'), 'FooBar')
   })
 
 
   test('dive', async () => {
-    expect(dive({
+    assert.deepStrictEqual(dive({
       color: {
         red: { x: 1 },
         green: { x: 2 },
@@ -46,7 +46,7 @@ describe('util', () => {
         mercury: { y: { z: 3 } },
         venus: { y: { z: 4 } },
       }
-    })).equal([
+    }), [
       [['color', 'red'], { x: 1 }],
       [['color', 'green'], { x: 2 }],
       [['planet', 'mercury'], { y: { z: 3 } }],
@@ -56,18 +56,18 @@ describe('util', () => {
 
 
   test('get', async () => {
-    expect(get({ a: { b: 1 } }, 'a.b')).equal(1)
+    assert.equal(get({ a: { b: 1 } }, 'a.b'), 1)
   })
 
 
   test('joins', async () => {
-    expect(joins(['a', 1, 'b', 2, 'c', 3, 'd', 4, 'e', 5, 'f', 6], ':', ',', '/'))
-      .equal('a:1,b:2/c:3,d:4/e:5,f:6')
+    assert.equal(joins(['a', 1, 'b', 2, 'c', 3, 'd', 4, 'e', 5, 'f', 6], ':', ',', '/'),
+      'a:1,b:2/c:3,d:4/e:5,f:6')
   })
 
 
   test('pinify', async () => {
-    expect(pinify(['a', 'b', 'c', 'd'])).equal('a:b,c:d')
+    assert.equal(pinify(['a', 'b', 'c', 'd']), 'a:b,c:d')
   })
 
 
@@ -93,59 +93,59 @@ describe('util', () => {
       }
     })
     // console.dir(s0, { depth: null })
-    expect(s0).equal({
+    assert.deepStrictEqual(s0, {
       'qaz/zed': { valid_json: { '$$': 'Open', foo: { a: 'Number' } } }
     })
 
-    const g0 = Gubu.build(s0['qaz/zed'].valid_json)
+    const g0 = Shape.build(s0['qaz/zed'].valid_json)
     // console.log(g0.stringify())
-    expect(g0.stringify()).equal('{"foo":{"a":"Number"},"$$":"Open"}')
+    assert.equal(g0.stringify(), '{"foo":{"a":"Number"},"$$":"Open"}')
   })
 
 
   test('stringify', async () => {
-    expect(stringify({ a: 1, b: 'hello' })).equal('{"a":1,"b":"hello"}')
-    expect(stringify(null)).equal('null')
-    expect(stringify(undefined)).equal(undefined as any)
-    expect(stringify(42)).equal('42')
+    assert.equal(stringify({ a: 1, b: 'hello' }), '{"a":1,"b":"hello"}')
+    assert.equal(stringify(null), 'null')
+    assert.equal(stringify(undefined), undefined as any)
+    assert.equal(stringify(42), '42')
   })
 
 
   test('decircular', async () => {
     // Simple non-circular object passes through
-    expect(decircular({ a: 1, b: { c: 2 } })).equal({ a: 1, b: { c: 2 } })
+    assert.deepStrictEqual(decircular({ a: 1, b: { c: 2 } }), { a: 1, b: { c: 2 } })
 
     // Handles null/undefined/primitives
-    expect(decircular(null)).equal(null)
-    expect(decircular(undefined)).equal(undefined)
-    expect(decircular(42)).equal(42)
-    expect(decircular('hello')).equal('hello')
+    assert.equal(decircular(null), null)
+    assert.equal(decircular(undefined), undefined)
+    assert.equal(decircular(42), 42)
+    assert.equal(decircular('hello'), 'hello')
 
     // Detects circular reference
     const obj: any = { a: 1 }
     obj.self = obj
     const result = decircular(obj)
-    expect(result.a).equal(1)
-    expect(result.self).equal('[Circular *]')
+    assert.equal(result.a, 1)
+    assert.equal(result.self, '[Circular *]')
 
     // Handles nested circular reference
     const parent: any = { child: { name: 'kid' } }
     parent.child.parent = parent
     const result2 = decircular(parent)
-    expect(result2.child.name).equal('kid')
-    expect(result2.child.parent).equal('[Circular *]')
+    assert.equal(result2.child.name, 'kid')
+    assert.equal(result2.child.parent, '[Circular *]')
 
     // Handles arrays
-    expect(decircular([1, 2, { a: 3 }])).equal([1, 2, { a: 3 }])
+    assert.deepStrictEqual(decircular([1, 2, { a: 3 }]), [1, 2, { a: 3 }])
 
     // Deeply nested non-circular object
     const deep = { a: { b: { c: { d: { e: 5 } } } } }
-    expect(decircular(deep)).equal({ a: { b: { c: { d: { e: 5 } } } } })
+    assert.deepStrictEqual(decircular(deep), { a: { b: { c: { d: { e: 5 } } } } })
   })
 
 
   test('order', async () => {
-    expect(order({}, {})).equal([])
+    assert.deepStrictEqual(order({}, {}), [])
 
     const items = {
       code: { title: 'Coding' },
@@ -153,44 +153,44 @@ describe('util', () => {
       devr: { title: 'Developer Relations' },
     }
 
-    expect(order(items, {})).equal([
+    assert.deepStrictEqual(order(items, {}), [
       { key: 'code', title: 'Coding' },
       { key: 'tech', title: 'Technology' },
       { key: 'devr', title: 'Developer Relations' },
     ])
 
-    expect(order(items, { order: { exclude: 'code,tech' } })).equal([
+    assert.deepStrictEqual(order(items, { order: { exclude: 'code,tech' } }), [
       { key: 'devr', title: 'Developer Relations' },
     ])
 
-    expect(order(items, { order: { include: 'code,tech' } })).equal([
+    assert.deepStrictEqual(order(items, { order: { include: 'code,tech' } }), [
       { key: 'code', title: 'Coding' },
       { key: 'tech', title: 'Technology' },
     ])
 
     // exclude wins
-    expect(order(items, { order: { exclude: 'code', include: 'code,tech' } })).equal([
+    assert.deepStrictEqual(order(items, { order: { exclude: 'code', include: 'code,tech' } }), [
       { key: 'tech', title: 'Technology' },
     ])
 
-    expect(order(items, { order: {} })).equal([
+    assert.deepStrictEqual(order(items, { order: {} }), [
       { key: 'code', title: 'Coding' },
       { key: 'tech', title: 'Technology' },
       { key: 'devr', title: 'Developer Relations' },
     ])
 
-    expect(order(items, { order: { sort: 'alpha$' } })).equal([
+    assert.deepStrictEqual(order(items, { order: { sort: 'alpha$' } }), [
       { key: 'code', title: 'Coding' },
       { key: 'devr', title: 'Developer Relations' },
       { key: 'tech', title: 'Technology' },
     ])
 
-    expect(order(items, { order: { sort: 'tech,code' } })).equal([
+    assert.deepStrictEqual(order(items, { order: { sort: 'tech,code' } }), [
       { key: 'tech', title: 'Technology' },
       { key: 'code', title: 'Coding' },
     ])
 
-    expect(order(items, { order: { sort: 'tech,alpha$' } })).equal([
+    assert.deepStrictEqual(order(items, { order: { sort: 'tech,alpha$' } }), [
       { key: 'tech', title: 'Technology' },
       { key: 'code', title: 'Coding' },
       { key: 'devr', title: 'Developer Relations' },
@@ -205,14 +205,14 @@ describe('util', () => {
       'tech': { title: 'Technology' },
     }
 
-    expect(order(nums, { order: { sort: 'alpha$' } })).equal([
+    assert.deepStrictEqual(order(nums, { order: { sort: 'alpha$' } }), [
       { key: '1', title: '1' },
       { key: '10', title: '10' },
       { key: '2', title: '2' },
       { key: 'tech', title: 'Technology' },
     ])
 
-    expect(order(nums, { order: { sort: 'human$' } })).equal([
+    assert.deepStrictEqual(order(nums, { order: { sort: 'human$' } }), [
       { title: '1', key: '1', 'title$': '00000000001' },
       { title: '2', key: '2', 'title$': '00000000002' },
       { title: '10', key: '10', 'title$': '00000000010' },

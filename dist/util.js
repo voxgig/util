@@ -4,7 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Gubu = exports.Pino = void 0;
+exports.Shape = exports.Pino = void 0;
 exports.camelify = camelify;
 exports.decircular = decircular;
 exports.dive = dive;
@@ -21,8 +21,8 @@ const node_path_1 = __importDefault(require("node:path"));
 const pino_1 = __importDefault(require("pino"));
 exports.Pino = pino_1.default;
 const pino_pretty_1 = __importDefault(require("pino-pretty"));
-const gubu_1 = require("gubu");
-Object.defineProperty(exports, "Gubu", { enumerable: true, get: function () { return gubu_1.Gubu; } });
+const shape_1 = require("shape");
+Object.defineProperty(exports, "Shape", { enumerable: true, get: function () { return shape_1.Shape; } });
 const CWD = process.cwd();
 function prettyPino(name, opts) {
     let pino = opts.pino;
