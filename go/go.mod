@@ -1,3 +1,3 @@
-module github.com/voxgig/util
+module github.com/voxgig/util/go
 
 go 1.21

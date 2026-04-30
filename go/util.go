@@ -4,7 +4,9 @@ package util
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
+	"reflect"
 	"sort"
 	"strings"
 	"unicode"
@@ -453,28 +455,72 @@ func Stringify(val any) string {
 // Decircular returns a deep copy of the value. In Go, true circular references
 // in map/slice structures are uncommon, but this provides a deep-copy utility
 // consistent with the TypeScript version.
+// Decircular deep-copies a value, replacing circular references with
+// "[Circular *path]" strings. Matches the TS implementation which uses
+// a WeakMap keyed by object identity to detect cycles on the current path.
 func Decircular(val any) any {
-	return decircularInternal(val)
+	seen := make(map[uintptr][]string)
+	var path []string
+	return decircularWalk(val, seen, &path)
 }
 
-func decircularInternal(val any) any {
+func decircularWalk(val any, seen map[uintptr][]string, path *[]string) any {
 	if val == nil {
 		return nil
 	}
+
 	switch v := val.(type) {
 	case map[string]any:
+		ptr := mapPtr(v)
+		if existing, ok := seen[ptr]; ok {
+			return fmt.Sprintf("[Circular *%s]", strings.Join(existing, "."))
+		}
+		pathCopy := make([]string, len(*path))
+		copy(pathCopy, *path)
+		seen[ptr] = pathCopy
+
 		result := make(map[string]any, len(v))
 		for key, value := range v {
-			result[key] = decircularInternal(value)
+			*path = append(*path, key)
+			result[key] = decircularWalk(value, seen, path)
+			*path = (*path)[:len(*path)-1]
 		}
+		delete(seen, ptr)
 		return result
+
 	case []any:
+		ptr := slicePtr(v)
+		if existing, ok := seen[ptr]; ok {
+			return fmt.Sprintf("[Circular *%s]", strings.Join(existing, "."))
+		}
+		pathCopy := make([]string, len(*path))
+		copy(pathCopy, *path)
+		seen[ptr] = pathCopy
+
 		result := make([]any, len(v))
 		for i, value := range v {
-			result[i] = decircularInternal(value)
+			key := fmt.Sprintf("%d", i)
+			*path = append(*path, key)
+			result[i] = decircularWalk(value, seen, path)
+			*path = (*path)[:len(*path)-1]
 		}
+		delete(seen, ptr)
 		return result
+
 	default:
 		return val
 	}
+}
+
+// mapPtr extracts a stable pointer from a map for identity comparison.
+func mapPtr(m map[string]any) uintptr {
+	return reflect.ValueOf(m).Pointer()
+}
+
+// slicePtr extracts a stable pointer from a slice's backing array.
+func slicePtr(s []any) uintptr {
+	if len(s) == 0 {
+		return 0
+	}
+	return reflect.ValueOf(s).Pointer()
 }
