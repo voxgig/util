@@ -5,11 +5,12 @@ package util
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // Camelify converts a kebab-case string (or slice of strings) to PascalCase.
@@ -85,13 +86,33 @@ func diveInternal(node map[string]any, d int, prefix []string, items *[]DiveEntr
 	}
 }
 
+// DiveMapper transforms a Dive entry (path and leaf value) into a key/value
+// pair. Returning ok=false omits the entry from the DiveMap result.
+type DiveMapper func(path []string, leaf any) (key string, value any, ok bool)
+
+// DiveMap traverses like Dive, then maps each entry through mapper, collecting
+// the results into a map keyed by the mapper's returned key. It mirrors the
+// mapper form of the canonical TS dive(node, mapper).
+func DiveMap(node map[string]any, mapper DiveMapper, depth ...int) map[string]any {
+	entries := Dive(node, depth...)
+	result := make(map[string]any, len(entries))
+	for _, entry := range entries {
+		if key, value, ok := mapper(entry.Path, entry.Value); ok {
+			result[key] = value
+		}
+	}
+	return result
+}
+
 // Get retrieves a deeply nested value from a map using a dot-separated path.
 // Example: Get(map, "a.b") returns map["a"]["b"]
 func Get(root any, path string) any {
 	return GetPath(root, strings.Split(path, "."))
 }
 
-// GetPath retrieves a deeply nested value from a map using a path slice.
+// GetPath retrieves a deeply nested value from a map (or slice) using a path
+// slice. Numeric path segments index into []any, mirroring how the canonical
+// TS get walks both objects and arrays.
 func GetPath(root any, path []string) any {
 	node := root
 	for _, key := range path {
@@ -101,6 +122,14 @@ func GetPath(root any, path []string) any {
 		switch m := node.(type) {
 		case map[string]any:
 			node = m[key]
+		case []any:
+			// Only canonical non-negative integer segments index a slice,
+			// matching JS array indexing (which rejects "01", "+1", "-1", etc.).
+			idx, err := strconv.Atoi(key)
+			if err != nil || idx < 0 || idx >= len(m) || strconv.Itoa(idx) != key {
+				return nil
+			}
+			node = m[idx]
 		default:
 			return nil
 		}
@@ -131,40 +160,32 @@ func Joins(arr []any, seps ...string) string {
 	return sb.String()
 }
 
+// toString renders a value the way JS Array.join would, so Joins output
+// matches the canonical TS implementation.
 func toString(v any) string {
 	switch val := v.(type) {
+	case nil:
+		// JS Array.join renders null/undefined as the empty string.
+		return ""
 	case string:
 		return val
 	case int:
-		return intToString(val)
+		return strconv.Itoa(val)
+	case int64:
+		return strconv.FormatInt(val, 10)
 	case float64:
-		if val == math.Trunc(val) {
-			return intToString(int(val))
-		}
-		return json.Number(json.Number(strings.TrimRight(strings.TrimRight(
-			strings.Replace(
-				strings.Replace(json.Number("").String(), "", "", 1),
-				"", "", 1),
-			"0"), "."))).String()
+		// 'f' with precision -1 gives the shortest round-trippable fixed-point
+		// form, matching JS String(): whole numbers print without ".0" (2 not
+		// "2.0") and full digits are kept (1234567 not "1.234567e+06"). Only the
+		// extreme magnitudes where JS switches to exponential (>=1e21, <1e-6)
+		// diverge, which never occur in pin/path joins.
+		return strconv.FormatFloat(val, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(val)
 	default:
 		b, _ := json.Marshal(val)
 		return string(b)
 	}
-}
-
-func intToString(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	if n < 0 {
-		return "-" + intToString(-n)
-	}
-	var digits []byte
-	for n > 0 {
-		digits = append([]byte{byte('0' + n%10)}, digits...)
-		n /= 10
-	}
-	return string(digits)
 }
 
 // Pinify converts a path slice to pin notation with alternating : and , separators.
@@ -173,12 +194,13 @@ func Pinify(path []string) string {
 	var sb strings.Builder
 	for i, p := range path {
 		sb.WriteString(p)
-		if i < len(path)-1 {
-			if i%2 == 0 {
-				sb.WriteString(":")
-			} else {
-				sb.WriteString(",")
-			}
+		// Matches the canonical TS behaviour: ':' is emitted after every
+		// even-indexed element (including the last), while ',' after an
+		// odd-indexed element is suppressed only on the final element.
+		if i%2 == 0 {
+			sb.WriteString(":")
+		} else if i < len(path)-1 {
+			sb.WriteString(",")
 		}
 	}
 	return sb.String()
@@ -267,8 +289,9 @@ func orderSort(items []map[string]any, itemMap map[string]map[string]any, spec *
 			maxLen := 0
 			for _, item := range filtered {
 				t := getTitle(item)
-				if len(t) > maxLen {
-					maxLen = len(t)
+				// UTF-16/rune length to match JS String.length (= runes for BMP).
+				if l := utf8.RuneCountInString(t); l > maxLen {
+					maxLen = l
 				}
 			}
 			padLen := maxLen + 1
@@ -328,11 +351,14 @@ func getTitle(item map[string]any) string {
 	return ""
 }
 
-func padStart(s string, length int, pad byte) string {
-	if len(s) >= length {
+// padStart left-pads s to length measured in runes, matching JS String.padStart
+// (which counts UTF-16 units; equal to runes for BMP text).
+func padStart(s string, length int, pad rune) string {
+	n := utf8.RuneCountInString(s)
+	if n >= length {
 		return s
 	}
-	return strings.Repeat(string(pad), length-len(s)) + s
+	return strings.Repeat(string(pad), length-n) + s
 }
 
 func orderExclude(items []map[string]any, spec *OrderSpec) []map[string]any {
@@ -443,9 +469,10 @@ func Entity(model map[string]any) map[string]any {
 	return entMap
 }
 
-// Stringify converts a value to a JSON string.
+// Stringify converts a value to a JSON string, first removing any circular
+// references (mirrors the canonical TS stringify, which wraps decircular).
 func Stringify(val any) string {
-	b, err := json.Marshal(val)
+	b, err := json.Marshal(Decircular(val))
 	if err != nil {
 		return ""
 	}

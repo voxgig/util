@@ -71,6 +71,47 @@ describe('util', () => {
   })
 
 
+  test('pinify partial', async () => {
+    // Odd-length paths keep the trailing ':' after the final even index.
+    assert.equal(pinify(['a', 'b', 'c']), 'a:b,c:')
+    assert.equal(pinify(['a']), 'a:')
+    assert.equal(pinify([]), '')
+  })
+
+
+  test('joins types', async () => {
+    assert.equal(joins(['x', 1.5], ':'), 'x:1.5')
+    assert.equal(joins(['x', 2], ':'), 'x:2')
+    assert.equal(joins(['x', 1234567], ':'), 'x:1234567')
+    assert.equal(joins(['x', true], ':'), 'x:true')
+    assert.equal(joins(['x', null], ':'), 'x:')
+  })
+
+
+  test('dive mapper', async () => {
+    const r0 = dive(
+      { a: { b: 1 }, c: { d: 2 } },
+      (path: any[], leaf: any) => [path.join('.'), leaf]
+    )
+    assert.deepStrictEqual(r0, { 'a.b': 1, 'c.d': 2 })
+
+    // A null key omits the entry from the result.
+    const r1 = dive(
+      { a: { b: 1 }, c: { d: 2 } },
+      (path: any[], leaf: any) => ['b' === path[1] ? null : path.join('.'), leaf]
+    )
+    assert.deepStrictEqual(r1, { 'c.d': 2 })
+  })
+
+
+  test('get array', async () => {
+    assert.equal(get({ a: [10, 20, 30] }, 'a.1'), 20)
+    assert.equal(get([{ x: 1 }], '0.x'), 1)
+    assert.equal(get({ a: [1] }, 'a.5'), undefined)
+    assert.equal(get({ a: [10, 20, 30] }, 'a.01'), undefined)
+  })
+
+
   test('entity', async () => {
     const s0 = entity({
       main: {
@@ -108,6 +149,11 @@ describe('util', () => {
     assert.equal(stringify(null), 'null')
     assert.equal(stringify(undefined), undefined as any)
     assert.equal(stringify(42), '42')
+
+    // Circular references are de-cycled before serialization.
+    const c: any = { a: 1 }
+    c.self = c
+    assert.equal(stringify(c), '{"a":1,"self":"[Circular *]"}')
   })
 
 
@@ -196,6 +242,12 @@ describe('util', () => {
       { key: 'devr', title: 'Developer Relations' },
     ])
 
+    // Unknown sort keys are dropped (no null holes in the result).
+    assert.deepStrictEqual(order(items, { order: { sort: 'tech,zzz,code' } }), [
+      { key: 'tech', title: 'Technology' },
+      { key: 'code', title: 'Coding' },
+    ])
+
 
 
     const nums = {
@@ -219,6 +271,17 @@ describe('util', () => {
       { title: 'Technology', key: 'tech', 'title$': '0Technology' }
     ])
 
+  })
+
+
+  test('order human$ unicode', async () => {
+    // Padding length is measured in UTF-16 units (String.length), so a
+    // multibyte title pads/sorts the same regardless of byte length.
+    const u = { a: { title: 'é' }, b: { title: '10' } }
+    assert.deepStrictEqual(order(u, { order: { sort: 'human$' } }), [
+      { key: 'a', title: 'é', 'title$': '00é' },
+      { key: 'b', title: '10', 'title$': '010' },
+    ])
   })
 
 })

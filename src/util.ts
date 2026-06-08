@@ -298,7 +298,9 @@ function order_sort(items: any[], itemMap: any, order_spec: any): any[] {
       )
       .flat()
 
-    items = key_order.map((k: string) => itemMap[k])
+    items = key_order
+      .map((k: string) => itemMap[k])
+      .filter((item: any) => null != item)
   }
 
   return items

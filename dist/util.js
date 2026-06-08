@@ -222,7 +222,9 @@ function order_sort(items, itemMap, order_spec) {
                 .map((item) => item.key)) :
                 k)
             .flat();
-        items = key_order.map((k) => itemMap[k]);
+        items = key_order
+            .map((k) => itemMap[k])
+            .filter((item) => null != item);
     }
     return items;
 }
