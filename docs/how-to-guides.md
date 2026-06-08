@@ -34,14 +34,14 @@ capitals survive (`camelify('iOS-app')` → `'IOSApp'`).
 ## How to flatten a nested map
 
 Use `dive` to turn a tree into a list of `[path, value]` entries. The default
-depth is 2:
+depth is 2, and entries come back in sorted key order (deterministic):
 
 ```js
 import { dive } from '@voxgig/util'
 
 dive({ red: { hex: '#f00' }, green: { hex: '#0f0' } })
-// [ [ ['red'],   { hex: '#f00' } ],
-//   [ ['green'], { hex: '#0f0' } ] ]
+// [ [ ['green'], { hex: '#0f0' } ],
+//   [ ['red'],   { hex: '#f00' } ] ]
 ```
 
 Pass a depth to descend further (a branch stops early at a leaf — a non-object,

@@ -22,11 +22,7 @@ func Camelify(input string) string {
 
 // CamelifySlice converts a slice of strings to PascalCase.
 func CamelifySlice(input []string) string {
-	parts := make([]string, len(input))
-	for i, s := range input {
-		parts[i] = s
-	}
-	return camelifyParts(parts)
+	return camelifyParts(input)
 }
 
 func camelifyParts(parts []string) string {
@@ -71,7 +67,15 @@ func diveInternal(node map[string]any, d int, prefix []string, items *[]DiveEntr
 	if node == nil {
 		return
 	}
-	for key, child := range node {
+	// Iterate keys in sorted order for deterministic output (Go map iteration
+	// is randomised); matches the canonical TS, which also sorts keys.
+	keys := make([]string, 0, len(node))
+	for k := range node {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		child := node[key]
 		if key == "$" {
 			pathCopy := make([]string, len(prefix))
 			copy(pathCopy, prefix)
@@ -223,7 +227,8 @@ type OrderSpec struct {
 // Order orders and filters a map of items according to the spec.
 func Order(itemMap map[string]map[string]any, spec *OrderSpec) []map[string]any {
 	items := make([]map[string]any, 0, len(itemMap))
-	// Maintain insertion order by sorting keys (Go maps are unordered)
+	// Go maps have no insertion order, so iterate keys in sorted order for a
+	// deterministic result. (Pass an explicit Sort to control ordering.)
 	keys := make([]string, 0, len(itemMap))
 	for k := range itemMap {
 		keys = append(keys, k)
@@ -242,7 +247,7 @@ func Order(itemMap map[string]map[string]any, spec *OrderSpec) []map[string]any 
 		return items
 	}
 
-	items = orderSort(items, itemMap, spec)
+	items = orderSort(items, spec)
 	items = orderExclude(items, spec)
 	items = orderInclude(items, spec)
 
@@ -257,7 +262,7 @@ func copyMap(m map[string]any) map[string]any {
 	return result
 }
 
-func orderSort(items []map[string]any, itemMap map[string]map[string]any, spec *OrderSpec) []map[string]any {
+func orderSort(items []map[string]any, spec *OrderSpec) []map[string]any {
 	if spec.Sort == "" {
 		return items
 	}
@@ -276,7 +281,9 @@ func orderSort(items []map[string]any, itemMap map[string]map[string]any, spec *
 		switch k {
 		case "alpha$":
 			filtered := filterItems(items, keyOrderSet)
-			sort.Slice(filtered, func(i, j int) bool {
+			// Stable so equal titles keep the (key-sorted) input order,
+			// matching JS's stable Array.sort.
+			sort.SliceStable(filtered, func(i, j int) bool {
 				ti := getTitle(filtered[i])
 				tj := getTitle(filtered[j])
 				return ti < tj
@@ -300,7 +307,7 @@ func orderSort(items []map[string]any, itemMap map[string]map[string]any, spec *
 				padded := padStart(t, padLen, '0')
 				item["title$"] = padded
 			}
-			sort.Slice(filtered, func(i, j int) bool {
+			sort.SliceStable(filtered, func(i, j int) bool {
 				return filtered[i]["title$"].(string) < filtered[j]["title$"].(string)
 			})
 			for _, item := range filtered {
@@ -311,22 +318,19 @@ func orderSort(items []map[string]any, itemMap map[string]map[string]any, spec *
 		}
 	}
 
+	// Reuse the already-copied items (which carry "key" and any title$ set by
+	// human$) via a single key lookup, instead of re-copying and rescanning
+	// all items for every final key.
+	byKey := make(map[string]map[string]any, len(items))
+	for _, it := range items {
+		if k, ok := it["key"].(string); ok {
+			byKey[k] = it
+		}
+	}
+
 	result := make([]map[string]any, 0, len(finalKeys))
 	for _, k := range finalKeys {
-		if orig, ok := itemMap[k]; ok {
-			item := copyMap(orig)
-			if _, ok := item["key"]; !ok {
-				item["key"] = k
-			}
-			// Copy title$ if present in items
-			for _, it := range items {
-				if it["key"] == k {
-					if ts, ok := it["title$"]; ok {
-						item["title$"] = ts
-					}
-					break
-				}
-			}
+		if item, ok := byKey[k]; ok {
 			result = append(result, item)
 		}
 	}
@@ -425,6 +429,11 @@ func Entity(model map[string]any) map[string]any {
 
 	for _, entry := range entries {
 		path := entry.Path
+		// Skip malformed entries that don't resolve to a base/name pair
+		// (guards the path[0]/path[1] access below).
+		if len(path) < 2 {
+			continue
+		}
 		entVal, ok := entry.Value.(map[string]any)
 		if !ok {
 			continue
@@ -479,12 +488,11 @@ func Stringify(val any) string {
 	return string(b)
 }
 
-// Decircular returns a deep copy of the value. In Go, true circular references
-// in map/slice structures are uncommon, but this provides a deep-copy utility
-// consistent with the TypeScript version.
 // Decircular deep-copies a value, replacing circular references with
-// "[Circular *path]" strings. Matches the TS implementation which uses
-// a WeakMap keyed by object identity to detect cycles on the current path.
+// "[Circular *path]" strings, where path is the dotted path to the first
+// occurrence. It mirrors the canonical TS decircular, detecting cycles by
+// object identity on the current traversal path. Only map[string]any and []any
+// are recursed into; all other values are returned unchanged.
 func Decircular(val any) any {
 	seen := make(map[uintptr][]string)
 	var path []string
@@ -498,6 +506,11 @@ func decircularWalk(val any, seen map[uintptr][]string, path *[]string) any {
 
 	switch v := val.(type) {
 	case map[string]any:
+		// Empty containers can't take part in a cycle; skip identity tracking
+		// (a nil map's pointer is 0 and would otherwise alias other zero ptrs).
+		if len(v) == 0 {
+			return map[string]any{}
+		}
 		ptr := mapPtr(v)
 		if existing, ok := seen[ptr]; ok {
 			return fmt.Sprintf("[Circular *%s]", strings.Join(existing, "."))
@@ -516,6 +529,11 @@ func decircularWalk(val any, seen map[uintptr][]string, path *[]string) any {
 		return result
 
 	case []any:
+		// Empty slices can't take part in a cycle; skip identity tracking
+		// (an empty slice's backing pointer is 0).
+		if len(v) == 0 {
+			return []any{}
+		}
 		ptr := slicePtr(v)
 		if existing, ok := seen[ptr]; ok {
 			return fmt.Sprintf("[Circular *%s]", strings.Join(existing, "."))
@@ -544,10 +562,11 @@ func mapPtr(m map[string]any) uintptr {
 	return reflect.ValueOf(m).Pointer()
 }
 
-// slicePtr extracts a stable pointer from a slice's backing array.
+// slicePtr extracts a slice's backing-array pointer for identity comparison.
+// Callers must exclude empty slices (handled in decircularWalk). Note: this is
+// identity by backing array, so distinct slices that share a backing array
+// (e.g. via re-slicing) could be conflated — this does not arise from the
+// independently allocated maps/slices that decoded JSON produces.
 func slicePtr(s []any) uintptr {
-	if len(s) == 0 {
-		return 0
-	}
 	return reflect.ValueOf(s).Pointer()
 }

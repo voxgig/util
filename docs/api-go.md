@@ -65,18 +65,18 @@ Traverse a nested map and collect leaves as `DiveEntry{Path, Value}`. The
 optional `depth` defaults to `2`. A branch is collected as a leaf at the depth
 limit, or when the child is not a non-empty `map[string]any`. A child under the
 key `$` contributes its value at the current path (the `$` is not added to the
-path).
+path). Keys are visited in sorted order.
 
 ```go
 util.Dive(map[string]any{
     "red":   map[string]any{"hex": "#f00"},
     "green": map[string]any{"hex": "#0f0"},
 })
-// []DiveEntry{ {Path:["red"], Value:{"hex":"#f00"}}, {Path:["green"], ...} }
+// sorted by key: []DiveEntry{ {Path:["green"], ...}, {Path:["red"], ...} }
 ```
 
-> The order of the returned entries is **not** deterministic — Go map iteration
-> is randomised. The set of entries matches TypeScript; the sequence does not.
+> Entries are returned in sorted key order, so the result is deterministic and
+> identical to the canonical TS `dive` (for the ASCII/BMP keys used in practice).
 
 TypeScript: [`dive`](api-typescript.md#dive) (array form).
 

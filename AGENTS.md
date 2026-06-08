@@ -93,9 +93,13 @@ Full signatures, parameters, edge cases, and examples: [TypeScript API](docs/api
   general `seps[j]` at every `2^j`-th boundary (the coarsest applicable wins).
 - **`pinify` keeps a trailing `:`** after a final even-indexed element:
   `pinify(['a','b','c'])` is `'a:b,c:'`, not `'a:b,c'`.
-- **`order` with no `sort`**: TypeScript keeps insertion order; Go cannot
-  (maps are unordered) and falls back to lexicographic key order. Pass an
-  explicit `sort` for deterministic cross-language output.
+- **`dive` visits keys in sorted order** in both languages, so its output (and
+  that of `DiveMap`/`Entity`) is deterministic and identical across the ports.
+  It does **not** preserve insertion order.
+- **`order` with no `sort`** is the one remaining cross-language *order*
+  difference: TypeScript keeps insertion order; Go (no insertion order to draw
+  on) returns lexicographic key order. Both are deterministic — pass an explicit
+  `sort` for identical output.
 - **`order` sort tokens**: `alpha$` (sort remaining items by title) and
   `human$` (natural sort: titles zero-padded to equal length, so `'2'` < `'10'`).
   `exclude` wins over `include`. Unknown keys in `sort` are dropped.
@@ -105,10 +109,9 @@ Full signatures, parameters, edge cases, and examples: [TypeScript API](docs/api
   (`'0'`, `'1'`, …); `'01'`/`'+1'` resolve to `undefined`/`nil`, matching JS.
 - **Numbers in `joins`**: Go renders `float64` to match JS `String()` for all
   realistic magnitudes; only JS's exponential range (`>=1e21`, `<1e-6`) differs.
-- **`Dive` order is non-deterministic in Go** (map iteration); the content
-  matches but the sequence does not. Don't rely on `Dive`/`Entity` ordering.
-- **Malformed input**: where canonical TS throws (e.g. `entity` on an entry
-  with no `field`), Go is intentionally defensive and returns a partial result.
+- **Malformed input**: both implementations are defensive — `entity` skips
+  entries that don't resolve to a `base/name` pair or lack a `field`, and
+  `order` treats a missing `title` as empty rather than throwing.
 
 These divergences and their rationale are explained in [docs/explanation.md](docs/explanation.md).
 

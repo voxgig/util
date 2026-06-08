@@ -20,18 +20,20 @@ const __1 = require("../");
         node_assert_1.default.equal((0, __1.camelify)('foo-bar'), 'FooBar');
     });
     (0, node_test_1.test)('dive', async () => {
+        // Entries come back in sorted key order (deterministic and identical
+        // across languages), so 'green' precedes 'red' whatever the input order.
         node_assert_1.default.deepStrictEqual((0, __1.dive)({
             color: {
                 red: { x: 1 },
                 green: { x: 2 },
             },
             planet: {
-                mercury: { y: { z: 3 } },
                 venus: { y: { z: 4 } },
+                mercury: { y: { z: 3 } },
             }
         }), [
-            [['color', 'red'], { x: 1 }],
             [['color', 'green'], { x: 2 }],
+            [['color', 'red'], { x: 1 }],
             [['planet', 'mercury'], { y: { z: 3 } }],
             [['planet', 'venus'], { y: { z: 4 } }]
         ]);
@@ -210,6 +212,33 @@ const __1 = require("../");
             { key: 'a', title: 'é', 'title$': '00é' },
             { key: 'b', title: '10', 'title$': '010' },
         ]);
+    });
+    (0, node_test_1.test)('order does not mutate input', async () => {
+        const items = { a: { title: '10' }, b: { title: '2' } };
+        (0, __1.order)(items, { order: { sort: 'human$' } });
+        // No key / title$ leaked back onto the caller's objects.
+        node_assert_1.default.deepStrictEqual(items, { a: { title: '10' }, b: { title: '2' } });
+    });
+    (0, node_test_1.test)('entity skips malformed entries', async () => {
+        // Missing main/ent: returns an empty map rather than throwing.
+        node_assert_1.default.deepStrictEqual((0, __1.entity)({}), {});
+        node_assert_1.default.deepStrictEqual((0, __1.entity)(undefined), {});
+        // A `$`-shaped ent carrying a field has a path shorter than base/name and
+        // is skipped (must not throw or produce an "undefined/..." key).
+        node_assert_1.default.deepStrictEqual((0, __1.entity)({ main: { ent: { '$': { field: { f: { kind: 'x' } } } } } }), {});
+        // An entity with no field map is skipped.
+        node_assert_1.default.deepStrictEqual((0, __1.entity)({ main: { ent: { base: { name: { valid: { a: 'A' } } } } } }), {});
+    });
+    (0, node_test_1.test)('getdlog', async () => {
+        const dlog = (0, __1.getdlog)('rev', '/some/where/file.ts');
+        dlog('phase', 'start');
+        dlog('phase', 'done');
+        const all = (0, __1.getdlog)('rev').log();
+        node_assert_1.default.equal(all.length, 2);
+        node_assert_1.default.equal(all[0][1], 'file.ts');
+        // Filtering by file matches the file field, not the timestamp.
+        node_assert_1.default.equal((0, __1.getdlog)('rev').log('/any/dir/file.ts').length, 2);
+        node_assert_1.default.equal((0, __1.getdlog)('rev').log('nope.ts').length, 0);
     });
 });
 //# sourceMappingURL=util.test.js.map

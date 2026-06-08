@@ -72,7 +72,7 @@ console.log(get(data, 'users.1.name'))          // bob
 ## 4. Flatten a tree into entries
 
 `dive` turns a nested map into a flat list of `[path, value]` pairs. By default
-it descends two levels:
+it descends two levels, returning entries in sorted key order:
 
 ```js
 const palette = {
@@ -81,8 +81,9 @@ const palette = {
 }
 
 console.log(dive(palette))
-// [ [ ['red'],   { hex: '#f00' } ],
-//   [ ['green'], { hex: '#0f0' } ] ]
+// sorted by key, so green comes before red:
+// [ [ ['green'], { hex: '#0f0' } ],
+//   [ ['red'],   { hex: '#f00' } ] ]
 ```
 
 This is the building block behind several other helpers — once a tree is a list

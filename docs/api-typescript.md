@@ -57,7 +57,8 @@ dive(node: any, mapper: DiveMapper): Record<string, any>
 type DiveMapper = (path: any[], leaf: any) => any[]
 ```
 
-Traverse a nested object and collect its leaves.
+Traverse a nested object and collect its leaves. Keys are visited in **sorted
+order**, so the output is deterministic and identical to the Go port.
 
 - **`depth`** — how many levels to descend. Default `2`. A branch is collected as
   a leaf when it reaches the depth limit, or when the value is `null`, not an
@@ -71,8 +72,8 @@ Traverse a nested object and collect its leaves.
   mapper, `dive` returns an object instead of an array.
 
 ```ts
-dive({ red: { hex: '#f00' }, green: { hex: '#0f0' } })
-// [ [ ['red'], { hex: '#f00' } ], [ ['green'], { hex: '#0f0' } ] ]
+dive({ red: { hex: '#f00' }, green: { hex: '#0f0' } })   // sorted: green, then red
+// [ [ ['green'], { hex: '#0f0' } ], [ ['red'], { hex: '#f00' } ] ]
 
 dive({ a: { b: { c: 1 } } }, 3)
 // [ [ ['a', 'b', 'c'], 1 ] ]

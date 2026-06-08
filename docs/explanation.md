@@ -56,18 +56,30 @@ deliberate and documented rather than bugs.
 ### Ordering and map iteration
 
 JavaScript objects remember the order keys were inserted; Go maps do not, and Go
-randomises iteration order on purpose. This leaks out in two places:
+randomises iteration order on purpose. Left unaddressed this would make Go output
+vary from run to run, so wherever the order of a result is observable, both
+implementations impose a deterministic order:
 
-- `dive` returns its entries in a non-deterministic order in Go. The *set* of
-  entries is identical to TypeScript; only the sequence varies.
-- `order` with no explicit `sort` returns items in insertion order in TypeScript,
-  but Go has no insertion order to return, so it falls back to lexicographic key
-  order. The same root cause means tie-breaking in `alpha$`/`human$` (equal
-  titles) can differ.
+- `dive` visits keys in **sorted order** in both languages. Its output is
+  therefore deterministic *and* identical across TypeScript and Go — and so are
+  the things built on it, `DiveMap` and `Entity` (whose key-collision resolution
+  is now stable too). This is why `dive` no longer preserves insertion order:
+  determinism across the two ports was judged more valuable, and its consumers
+  (`entity`) don't depend on order.
+- `Stringify` is deterministic on both sides — Go's `encoding/json` sorts object
+  keys; TypeScript serialises in insertion order. The *text* can differ in key
+  order, but each is stable.
+- `order` with no explicit `sort` is the one place a cross-language *order*
+  difference remains: TypeScript returns items in insertion order, while Go (with
+  no insertion order to draw on) returns them in lexicographic key order. Both
+  are deterministic; they simply differ. Tie-breaking in `alpha$`/`human$` (equal
+  titles) can differ for the same reason.
 
-The practical guidance is to pass an explicit `sort` whenever cross-language
-determinism matters. The alternative — changing the Go API to accept an ordered
-structure instead of a map — was rejected as too heavy for a small utility.
+The practical guidance is to pass an explicit `sort` whenever you need `order`'s
+output to be identical across languages. Preserving the caller's insertion order
+in Go would mean changing the API to accept an ordered structure instead of a
+map — rejected as too heavy for a small utility, and at odds with `order`'s
+no-sort case meaning "the order you gave me".
 
 ### Number formatting
 
@@ -90,15 +102,16 @@ change their sort position, so the Go port counts runes instead
 Basic-Multilingual-Plane text — every realistic title — so the two agree; they
 would only differ for astral characters such as emoji.
 
-### Malformed input: throw versus defend
+### Malformed input is handled defensively
 
-Faced with structurally invalid input, the canonical TypeScript sometimes throws
-(for example, `entity` on an entry that has no `field`, or `human$` on an item
-with no `title`, because it reaches for a property of `undefined`). A library
-that panicked in the same situations would be poor Go, so the port is
-deliberately more defensive: it skips the bad entry or treats a missing title as
-empty and returns a partial result. This is a conscious divergence on the
-unhappy path; on well-formed input the two behave identically.
+Both implementations are deliberately forgiving of structurally invalid input
+rather than throwing or panicking. `entity` skips any entry that doesn't resolve
+to a `base/name` pair or that lacks a `field` map (a `$`-shaped entry that
+produces a short path, for instance, is dropped instead of crashing), and the
+`human$`/`alpha$` sorts treat a missing `title` as empty. The two ports take the
+same defensive path, so they agree on malformed input as well as well-formed
+input. (`entity` and `order` also avoid mutating the caller's input — they copy
+before adding derived fields such as `key` and `title$`.)
 
 ### Overloads become separate functions
 

@@ -67,7 +67,7 @@ function prettyPino(name: string, opts: {
         }
 
         const point = (log.point || '').padEnd(20)
-        let msg = `${fullname.padEnd(22).padStart(6 - levelLabel.length)} ${point} ` +
+        let msg = `${fullname.padEnd(22)} ${point} ` +
           `${log.fail ? log.fail + ' ' : ''}${note}`
 
         if (true == log.break) {
@@ -104,7 +104,10 @@ function hasOwnKeys(obj: any): boolean {
 
 
 function diveInternal(node: any, d: number, prefix: string[], items: any[]): void {
-  for (const [key, child] of Object.entries(node || {})) {
+  const obj = node || {}
+  // Iterate keys in sorted order for deterministic, cross-language-stable output.
+  for (const key of Object.keys(obj).sort()) {
+    const child = obj[key]
     if ('$' === key) {
       items.push([prefix.slice(), child])
     }
@@ -123,7 +126,9 @@ function diveInternal(node: any, d: number, prefix: string[], items: any[]): voi
 }
 
 
-function dive(node: any, depth?: number | DiveMapper, mapper?: DiveMapper): any[] {
+function dive(node: any, mapper: DiveMapper): Record<string, any>
+function dive(node: any, depth?: number, mapper?: DiveMapper): [any[], any][]
+function dive(node: any, depth?: number | DiveMapper, mapper?: DiveMapper): any {
   let d = (null == depth || 'number' != typeof depth) ? 2 : depth
   mapper = 'function' === typeof depth ? depth : mapper
 
@@ -151,7 +156,6 @@ function dive(node: any, depth?: number | DiveMapper, mapper?: DiveMapper): any[
 */
 function joins(arr: any[], ...seps: string[]) {
   arr = arr || []
-  seps = seps || []
   let sa = []
   for (let i = 0; i < arr.length; i++) {
     sa.push(arr[i])
@@ -199,41 +203,50 @@ function pinify(path: string[]) {
 
 // TODO: only works on base/name style entities - generalize
 function entity(model: any) {
-  let entries = dive(model.main.ent)
+  let entries = dive(model?.main?.ent)
   let entMap: any = {}
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]
 
     let path = entry[0]
 
+    // Skip malformed entries that don't resolve to a base/name pair.
+    if (path.length < 2) {
+      continue
+    }
+
     // TODO: move EntShape to @voxgig/model
     // let ent = EntShape(entry[1])
     let ent = entry[1]
 
-    // console.log('ENT', path, ent)
+    if (null == ent || 'object' !== typeof ent) {
+      continue
+    }
 
-    let valid = ent.valid || {}
+    let field = ent.field
+    if (null == field || 'object' !== typeof field) {
+      continue
+    }
 
-    Object.entries(ent.field).forEach((n: any[]) => {
+    // Copy so the caller's input is never mutated.
+    let valid: any = { ...(ent.valid || {}) }
+
+    Object.entries(field).forEach((n: any[]) => {
       let name = n[0]
-      let field = n[1]
+      let fld = n[1] as any
 
-      // console.log('FV', name, field)
-
-      let fv = field.kind
-      if (field.valid) {
-        let vt = typeof field.valid
+      let fv = fld.kind
+      if (fld.valid) {
+        let vt = typeof fld.valid
         if ('string' === vt) {
-          fv += '.' + field.valid
+          fv += '.' + fld.valid
         }
         else {
-          fv = field.valid
+          fv = fld.valid
         }
       }
       valid[name] = fv
     })
-
-    // console.log(path, valid)
 
     entMap[path[0] + '/' + path[1]] = {
       valid_json: valid
@@ -251,25 +264,30 @@ function order(itemMap: Record<string, { title?: string }>, spec: {
     include?: string
   }
 }): any[] {
-  let items = Object
+  // Shallow-copy each item so the caller's input map is never mutated.
+  let items: any[] = Object
     .entries(itemMap)
-    .reduce((a: any[], n: any) => (n[1].key = (n[1].key || n[0]), a.push(n[1]), a), [])
+    .map(([k, v]: [string, any]) => ({ ...v, key: v.key ?? k }))
 
-  const ops: ((items: any[], itemMap: any, order_spec: typeof spec['order']) => any[])[] = [
+  const ops: ((items: any[], order_spec: typeof spec['order']) => any[])[] = [
     order_sort,
     order_exclude,
     order_include,
   ]
   for (let op of ops) {
-    items = op(items, itemMap, spec?.order || {})
+    items = op(items, spec?.order || {})
   }
 
   return items
 }
 
 
-function order_sort(items: any[], itemMap: any, order_spec: any): any[] {
+function order_sort(items: any[], order_spec: any): any[] {
   if (order_spec.sort) {
+    // Look items up by key so the sorted result reuses the same (copied)
+    // item objects, preserving any title$ added below.
+    const byKey = new Map<string, any>(items.map((it: any) => [it.key, it]))
+
     let key_order = 'string' === typeof order_spec.sort ?
       order_spec.sort.split(/\s*,\s*/).map((s: string) => s.trim()) :
       order_spec.sort
@@ -281,17 +299,20 @@ function order_sort(items: any[], itemMap: any, order_spec: any): any[] {
     key_order = key_order
       .map((k: string, _: any) =>
         'human$' === k ? (
-          _ = 1 + items.reduce((a: number, n: any) => (Math.max(a, n.title.length)), 0),
+          _ = 1 + items.reduce((a: number, n: any) => (Math.max(a, ('' + (n.title ?? '')).length)), 0),
           items
             .filter((item: any) => !key_order_set.has(item.key))
-            .map((item: any) => (item.title$ = item.title.padStart(_, '0'), item))
+            .map((item: any) => (item.title$ = ('' + (item.title ?? '')).padStart(_, '0'), item))
             .sort((a: any, b: any) => a.title$ > b.title$ ? 1 : a.title$ < b.title$ ? -1 : 0)
             .map((item: any) => item.key)
         ) :
           'alpha$' === k ? (
             items
               .filter((item: any) => !key_order_set.has(item.key))
-              .sort((a: any, b: any) => a.title > b.title ? 1 : a.title < b.title ? -1 : 0)
+              .sort((a: any, b: any) => {
+                const at = '' + (a.title ?? ''), bt = '' + (b.title ?? '')
+                return at > bt ? 1 : at < bt ? -1 : 0
+              })
               .map((item: any) => item.key)
           ) :
             k
@@ -299,14 +320,14 @@ function order_sort(items: any[], itemMap: any, order_spec: any): any[] {
       .flat()
 
     items = key_order
-      .map((k: string) => itemMap[k])
+      .map((k: string) => byKey.get(k))
       .filter((item: any) => null != item)
   }
 
   return items
 }
 
-function order_exclude(items: any[], itemMap: any, order_spec: any): any[] {
+function order_exclude(items: any[], order_spec: any): any[] {
   if (order_spec.exclude) {
     let excludes = 'string' === typeof order_spec.exclude ?
       order_spec.exclude.split(/\s*,\s*/).map((s: string) => s.trim()) :
@@ -317,7 +338,7 @@ function order_exclude(items: any[], itemMap: any, order_spec: any): any[] {
   return items
 }
 
-function order_include(items: any[], itemMap: any, order_spec: any): any[] {
+function order_include(items: any[], order_spec: any): any[] {
   if (order_spec.include) {
     let includes = 'string' === typeof order_spec.include ?
       order_spec.include.split(/\s*,\s*/).map((s: string) => s.trim()) :
@@ -370,7 +391,7 @@ function getdlog(
   dlog.file = file
   dlog.log = (filepath?: string, __f?: string | null) =>
   (__f = null == filepath ? null : Path.basename(filepath),
-    g.__dlog__.filter((n: any[]) => n[0] === tag && (null == __f || n[2] === __f)))
+    g.__dlog__.filter((n: any[]) => n[0] === tag && (null == __f || n[1] === __f)))
   return dlog
 }
 
@@ -399,7 +420,11 @@ function decircular(object?: any) {
 
     seenObjects.set(value, path.slice())
 
-    const newValue: any = value instanceof Error ? value : Array.isArray(value) ? [] : {}
+    // For errors, de-cycle onto a clone (same prototype, so `instanceof Error`
+    // still holds) rather than mutating the caller's error in place.
+    const newValue: any = value instanceof Error ?
+      Object.create(Object.getPrototypeOf(value)) :
+      Array.isArray(value) ? [] : {}
 
     for (const [key2, value2] of Object.entries(value)) {
       path.push(key2)

@@ -40,28 +40,36 @@ func TestDive(t *testing.T) {
 			"green": map[string]any{"x": 2},
 		},
 		"planet": map[string]any{
-			"mercury": map[string]any{"y": map[string]any{"z": 3}},
 			"venus":   map[string]any{"y": map[string]any{"z": 4}},
+			"mercury": map[string]any{"y": map[string]any{"z": 3}},
 		},
 	}
 
 	result := Dive(input)
 
-	// Since Go maps are unordered, check by building a lookup
-	if len(result) != 4 {
-		t.Fatalf("Dive returned %d entries, want 4", len(result))
+	// Entries come back in sorted key order (deterministic), matching the
+	// canonical TS exactly: color.green, color.red, planet.mercury, planet.venus.
+	wantPaths := [][]string{
+		{"color", "green"}, {"color", "red"},
+		{"planet", "mercury"}, {"planet", "venus"},
 	}
-
-	lookup := make(map[string]any)
-	for _, entry := range result {
-		key := entry.Path[0] + "." + entry.Path[1]
-		lookup[key] = entry.Value
+	wantVals := []any{
+		map[string]any{"x": 2},
+		map[string]any{"x": 1},
+		map[string]any{"y": map[string]any{"z": 3}},
+		map[string]any{"y": map[string]any{"z": 4}},
 	}
-
-	assertMapValue(t, lookup, "color.red", map[string]any{"x": 1})
-	assertMapValue(t, lookup, "color.green", map[string]any{"x": 2})
-	assertMapValue(t, lookup, "planet.mercury", map[string]any{"y": map[string]any{"z": 3}})
-	assertMapValue(t, lookup, "planet.venus", map[string]any{"y": map[string]any{"z": 4}})
+	if len(result) != len(wantPaths) {
+		t.Fatalf("Dive returned %d entries, want %d", len(result), len(wantPaths))
+	}
+	for i := range wantPaths {
+		if !reflect.DeepEqual(result[i].Path, wantPaths[i]) {
+			t.Errorf("Dive entry %d path = %v, want %v", i, result[i].Path, wantPaths[i])
+		}
+		if !reflect.DeepEqual(result[i].Value, wantVals[i]) {
+			t.Errorf("Dive entry %d value = %v, want %v", i, result[i].Value, wantVals[i])
+		}
+	}
 }
 
 func TestGet(t *testing.T) {
@@ -380,19 +388,36 @@ func TestGetArray(t *testing.T) {
 	}
 }
 
-// Helpers
-
-func assertMapValue(t *testing.T, m map[string]any, key string, expected any) {
-	t.Helper()
-	val, ok := m[key]
-	if !ok {
-		t.Errorf("key %q not found in map", key)
-		return
+func TestEntitySkipsMalformed(t *testing.T) {
+	// Missing main/ent: nil, no panic.
+	if r := Entity(map[string]any{}); r != nil {
+		t.Errorf("Entity({}) = %v, want nil", r)
 	}
-	if !reflect.DeepEqual(val, expected) {
-		t.Errorf("m[%q] = %v, want %v", key, val, expected)
+	// A `$`-shaped ent that carries a field produces a path shorter than
+	// base/name: it must be skipped, not panic (index-out-of-range regression).
+	r := Entity(map[string]any{"main": map[string]any{"ent": map[string]any{
+		"$": map[string]any{"field": map[string]any{"f": map[string]any{"kind": "x"}}}}}})
+	if len(r) != 0 {
+		t.Errorf("Entity($-shaped) = %v, want empty", r)
+	}
+	// An entity with no field map is skipped.
+	r2 := Entity(map[string]any{"main": map[string]any{"ent": map[string]any{
+		"base": map[string]any{"name": map[string]any{"valid": map[string]any{"a": "A"}}}}}})
+	if len(r2) != 0 {
+		t.Errorf("Entity(no-field) = %v, want empty", r2)
 	}
 }
+
+func TestDecircularEmpty(t *testing.T) {
+	// Empty maps/slices are copied through untouched (no false cycle markers).
+	in := map[string]any{"m": map[string]any{}, "s": []any{}, "n": 1}
+	out := Decircular(in)
+	if !reflect.DeepEqual(out, in) {
+		t.Errorf("Decircular(empty containers) = %v, want %v", out, in)
+	}
+}
+
+// Helpers
 
 func assertOrderKeys(t *testing.T, items []map[string]any, expectedKeys []string) {
 	t.Helper()

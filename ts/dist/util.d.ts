@@ -15,7 +15,8 @@ declare function prettyPino(name: string, opts: {
     pino?: ReturnType<typeof Pino>;
     debug?: boolean | string;
 }): Pino.Logger<string, boolean>;
-declare function dive(node: any, depth?: number | DiveMapper, mapper?: DiveMapper): any[];
+declare function dive(node: any, mapper: DiveMapper): Record<string, any>;
+declare function dive(node: any, depth?: number, mapper?: DiveMapper): [any[], any][];
 declare function joins(arr: any[], ...seps: string[]): string;
 declare function get(root: any, path: string | string[]): any;
 declare function camelify(input: any[] | string): string;
