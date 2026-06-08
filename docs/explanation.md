@@ -19,16 +19,16 @@ designated canonical.
 
 ## The canonical / parity model
 
-**TypeScript (`src/util.ts`) is the source of truth.** The Go package
+**TypeScript (`ts/src/util.ts`) is the source of truth.** The Go package
 (`go/util.go`) is a port that follows it. The asymmetry is intentional: when a
 question of "what should this do?" comes up, the TypeScript behaviour is the
 answer, and the Go code is brought into line — never the reverse.
 
 Concretely, a behavioural change moves in one direction:
 
-1. Change TypeScript and capture the new behaviour in `test/util.test.ts`.
+1. Change TypeScript and capture the new behaviour in `ts/test/util.test.ts`.
 2. Mirror the change in Go and add the matching case to `go/util_test.go`.
-3. Rebuild the committed TypeScript output (`dist/`, `dist-test/`).
+3. Rebuild the committed TypeScript output (`ts/dist/`, `ts/dist-test/`).
 4. Run both suites.
 
 The tests are the contract. For every shared behaviour there is a TypeScript test
@@ -40,12 +40,12 @@ the natural-sort padding in `order` all arrived this way.
 
 ## Why the committed build output
 
-`dist/` and `dist-test/` (compiled JavaScript and declaration files) are checked
-into the repository. This lets the package be consumed directly from a Git
-reference without a build step, and lets the test runner execute the compiled
-output. The consequence to remember is that they are generated: after any change
-to `src/` or `test/`, they must be rebuilt (`npm run build`) and the regenerated
-files committed alongside the source.
+`ts/dist/` and `ts/dist-test/` (compiled JavaScript and declaration files) are
+checked into the repository. This lets the package be consumed directly from a
+Git reference without a build step, and lets the test runner execute the
+compiled output. The consequence to remember is that they are generated: after
+any change to `ts/src/` or `ts/test/`, they must be rebuilt (`npm run build`) and
+the regenerated files committed alongside the source.
 
 ## Where the two versions diverge, and why
 

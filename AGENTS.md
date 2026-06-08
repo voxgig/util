@@ -9,17 +9,17 @@ using `@voxgig/util` as a dependency. Human-oriented documentation lives in
 `@voxgig/util` is a small library of shared utility functions, implemented twice
 with matching behaviour:
 
-- **TypeScript** — `src/util.ts`, published as npm `@voxgig/util`.
+- **TypeScript** — `ts/src/util.ts`, published as npm `@voxgig/util`.
 - **Go** — `go/util.go`, module `github.com/voxgig/util/go` (package `util`).
 
 ## The one rule that matters
 
-**TypeScript (`src/util.ts`) is canonical.** The Go package is a port kept in
+**TypeScript (`ts/src/util.ts`) is canonical.** The Go package is a port kept in
 parity with it. When you change behaviour:
 
-1. Change TypeScript first, and add/adjust a test in `test/util.test.ts`.
+1. Change TypeScript first, and add/adjust a test in `ts/test/util.test.ts`.
 2. Mirror the change in `go/util.go` and `go/util_test.go`.
-3. Rebuild TypeScript (`npm run build`) — `dist/` and `dist-test/` are committed.
+3. Rebuild TypeScript (`npm run build`) — `ts/dist/` and `ts/dist-test/` are committed.
 4. Run both test suites; keep `gofmt`/`go vet` clean.
 5. Update the docs in `docs/` and the quick-reference below if the API changed.
 
@@ -28,10 +28,10 @@ Never let the Go behaviour drift from the TypeScript semantics.
 ## Repository map
 
 ```
-src/util.ts          TypeScript source (CANONICAL)
-test/util.test.ts    TypeScript tests (node:test)
-dist/                Compiled JS + .d.ts (committed; regenerate with npm run build)
-dist-test/           Compiled tests (committed; the test runner target)
+ts/src/util.ts       TypeScript source (CANONICAL)
+ts/test/util.test.ts TypeScript tests (node:test)
+ts/dist/             Compiled JS + .d.ts (committed; regenerate with npm run build)
+ts/dist-test/        Compiled tests (committed; the test runner target)
 go/util.go           Go port
 go/util_test.go      Go tests
 docs/                Human documentation
@@ -41,7 +41,7 @@ ci/                  CI workflow source (copied into .github/workflows/)
 ## Build, test, run
 
 ```bash
-# TypeScript (repo root)
+# TypeScript (from ts/)
 npm install
 npm run build        # tsc --build src test
 npm test             # node --test dist-test/**/*.test.js

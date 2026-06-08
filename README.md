@@ -69,11 +69,12 @@ coding agents live in [AGENTS.md](AGENTS.md).
 
 ## Building and contributing
 
-This repo contains both implementations. TypeScript output in `dist/` and
-`dist-test/` is committed, so rebuild after changing `src/` or `test/`.
+This repo contains both implementations, side by side in `ts/` and `go/`.
+TypeScript output in `ts/dist/` and `ts/dist-test/` is committed, so rebuild
+after changing `ts/src/` or `ts/test/`.
 
 ```bash
-# TypeScript (repo root)
+# TypeScript (from ts/)
 npm install
 npm run build          # tsc --build src test -> dist/ and dist-test/
 npm test

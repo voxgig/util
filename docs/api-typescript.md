@@ -1,6 +1,6 @@
 # TypeScript API reference
 
-Every export of `@voxgig/util` (`src/util.ts`). This is the canonical
+Every export of `@voxgig/util` (`ts/src/util.ts`). This is the canonical
 implementation; the [Go reference](api-go.md) describes the matching port.
 
 ```ts
