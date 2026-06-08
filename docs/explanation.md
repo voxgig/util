@@ -164,9 +164,5 @@ utilities are mirrored.
 ## Continuous integration
 
 CI builds and tests both implementations: a Node matrix for the TypeScript
-package and a Go job for the port. The workflow definitions are kept under
-[`ci/`](../ci/) and copied into `.github/workflows/`, because updating files
-under `.github/workflows/` directly requires a permission that automated tooling
-in this project does not always hold. Treating `ci/` as the editable source and
-the workflow file as a deployed copy keeps CI changes reviewable in ordinary
-pull requests; [`ci/README.md`](../ci/README.md) describes the sync step.
+package and a Go job for the port. The workflow definitions live in
+[`.github/workflows/`](../.github/workflows/).

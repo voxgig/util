@@ -35,7 +35,7 @@ ts/dist-test/        Compiled tests (committed; the test runner target)
 go/util.go           Go port
 go/util_test.go      Go tests
 docs/                Human documentation
-ci/                  CI workflow source (copied into .github/workflows/)
+.github/workflows/   CI workflow definitions
 ```
 
 ## Build, test, run
@@ -117,6 +117,6 @@ These divergences and their rationale are explained in [docs/explanation.md](doc
 
 ## CI
 
-Workflow source is in `ci/`, not edited directly under `.github/workflows/`
-(updating workflow files requires extra permissions). To deploy CI changes,
-copy `ci/ci.yml` to `.github/workflows/ci.yml`. See [`ci/README.md`](ci/README.md).
+Workflow definitions live in `.github/workflows/ci.yml`. CI builds and tests
+the TypeScript package (Node 24 + latest) and the Go port on every push and
+pull request to `main`.

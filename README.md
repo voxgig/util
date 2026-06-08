@@ -83,8 +83,8 @@ npm test
 go test ./...
 ```
 
-Continuous-integration workflow definitions are maintained under [`ci/`](ci/)
-and copied into `.github/workflows/` — see [`ci/README.md`](ci/README.md).
+Continuous-integration workflow definitions live in
+[`.github/workflows/`](.github/workflows/).
 
 ## License
 
