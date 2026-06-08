@@ -53,7 +53,7 @@ function prettyPino(name, opts) {
                     note += '\n  ';
                 }
                 const point = (log.point || '').padEnd(20);
-                let msg = `${fullname.padEnd(22).padStart(6 - levelLabel.length)} ${point} ` +
+                let msg = `${fullname.padEnd(22)} ${point} ` +
                     `${log.fail ? log.fail + ' ' : ''}${note}`;
                 if (true == log.break) {
                     msg += '\n';
@@ -81,7 +81,10 @@ function hasOwnKeys(obj) {
     return false;
 }
 function diveInternal(node, d, prefix, items) {
-    for (const [key, child] of Object.entries(node || {})) {
+    const obj = node || {};
+    // Iterate keys in sorted order for deterministic, cross-language-stable output.
+    for (const key of Object.keys(obj).sort()) {
+        const child = obj[key];
         if ('$' === key) {
             items.push([prefix.slice(), child]);
         }
@@ -119,7 +122,6 @@ function dive(node, depth, mapper) {
 */
 function joins(arr, ...seps) {
     arr = arr || [];
-    seps = seps || [];
     let sa = [];
     for (let i = 0; i < arr.length; i++) {
         sa.push(arr[i]);
@@ -156,33 +158,42 @@ function pinify(path) {
 }
 // TODO: only works on base/name style entities - generalize
 function entity(model) {
-    let entries = dive(model.main.ent);
+    let entries = dive(model?.main?.ent);
     let entMap = {};
     for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
         let path = entry[0];
+        // Skip malformed entries that don't resolve to a base/name pair.
+        if (path.length < 2) {
+            continue;
+        }
         // TODO: move EntShape to @voxgig/model
         // let ent = EntShape(entry[1])
         let ent = entry[1];
-        // console.log('ENT', path, ent)
-        let valid = ent.valid || {};
-        Object.entries(ent.field).forEach((n) => {
+        if (null == ent || 'object' !== typeof ent) {
+            continue;
+        }
+        let field = ent.field;
+        if (null == field || 'object' !== typeof field) {
+            continue;
+        }
+        // Copy so the caller's input is never mutated.
+        let valid = { ...(ent.valid || {}) };
+        Object.entries(field).forEach((n) => {
             let name = n[0];
-            let field = n[1];
-            // console.log('FV', name, field)
-            let fv = field.kind;
-            if (field.valid) {
-                let vt = typeof field.valid;
+            let fld = n[1];
+            let fv = fld.kind;
+            if (fld.valid) {
+                let vt = typeof fld.valid;
                 if ('string' === vt) {
-                    fv += '.' + field.valid;
+                    fv += '.' + fld.valid;
                 }
                 else {
-                    fv = field.valid;
+                    fv = fld.valid;
                 }
             }
             valid[name] = fv;
         });
-        // console.log(path, valid)
         entMap[path[0] + '/' + path[1]] = {
             valid_json: valid
         };
@@ -190,43 +201,52 @@ function entity(model) {
     return entMap;
 }
 function order(itemMap, spec) {
+    // Shallow-copy each item so the caller's input map is never mutated.
     let items = Object
         .entries(itemMap)
-        .reduce((a, n) => (n[1].key = (n[1].key || n[0]), a.push(n[1]), a), []);
+        .map(([k, v]) => ({ ...v, key: v.key ?? k }));
     const ops = [
         order_sort,
         order_exclude,
         order_include,
     ];
     for (let op of ops) {
-        items = op(items, itemMap, spec?.order || {});
+        items = op(items, spec?.order || {});
     }
     return items;
 }
-function order_sort(items, itemMap, order_spec) {
+function order_sort(items, order_spec) {
     if (order_spec.sort) {
+        // Look items up by key so the sorted result reuses the same (copied)
+        // item objects, preserving any title$ added below.
+        const byKey = new Map(items.map((it) => [it.key, it]));
         let key_order = 'string' === typeof order_spec.sort ?
             order_spec.sort.split(/\s*,\s*/).map((s) => s.trim()) :
             order_spec.sort;
         const key_order_set = new Set(key_order.filter((k) => k !== 'human$' && k !== 'alpha$'));
         key_order = key_order
-            .map((k, _) => 'human$' === k ? (_ = 1 + items.reduce((a, n) => (Math.max(a, n.title.length)), 0),
+            .map((k, _) => 'human$' === k ? (_ = 1 + items.reduce((a, n) => (Math.max(a, ('' + (n.title ?? '')).length)), 0),
             items
                 .filter((item) => !key_order_set.has(item.key))
-                .map((item) => (item.title$ = item.title.padStart(_, '0'), item))
+                .map((item) => (item.title$ = ('' + (item.title ?? '')).padStart(_, '0'), item))
                 .sort((a, b) => a.title$ > b.title$ ? 1 : a.title$ < b.title$ ? -1 : 0)
                 .map((item) => item.key)) :
             'alpha$' === k ? (items
                 .filter((item) => !key_order_set.has(item.key))
-                .sort((a, b) => a.title > b.title ? 1 : a.title < b.title ? -1 : 0)
+                .sort((a, b) => {
+                const at = '' + (a.title ?? ''), bt = '' + (b.title ?? '');
+                return at > bt ? 1 : at < bt ? -1 : 0;
+            })
                 .map((item) => item.key)) :
                 k)
             .flat();
-        items = key_order.map((k) => itemMap[k]);
+        items = key_order
+            .map((k) => byKey.get(k))
+            .filter((item) => null != item);
     }
     return items;
 }
-function order_exclude(items, itemMap, order_spec) {
+function order_exclude(items, order_spec) {
     if (order_spec.exclude) {
         let excludes = 'string' === typeof order_spec.exclude ?
             order_spec.exclude.split(/\s*,\s*/).map((s) => s.trim()) :
@@ -236,7 +256,7 @@ function order_exclude(items, itemMap, order_spec) {
     }
     return items;
 }
-function order_include(items, itemMap, order_spec) {
+function order_include(items, order_spec) {
     if (order_spec.include) {
         let includes = 'string' === typeof order_spec.include ?
             order_spec.include.split(/\s*,\s*/).map((s) => s.trim()) :
@@ -267,7 +287,7 @@ function getdlog(tagin, filepath) {
     dlog.tag = tag;
     dlog.file = file;
     dlog.log = (filepath, __f) => (__f = null == filepath ? null : node_path_1.default.basename(filepath),
-        g.__dlog__.filter((n) => n[0] === tag && (null == __f || n[2] === __f)));
+        g.__dlog__.filter((n) => n[0] === tag && (null == __f || n[1] === __f)));
     return dlog;
 }
 function stringify(val, replacer, indent) {
@@ -288,7 +308,11 @@ function decircular(object) {
             return `[Circular *${existingPath.join('.')}]`;
         }
         seenObjects.set(value, path.slice());
-        const newValue = value instanceof Error ? value : Array.isArray(value) ? [] : {};
+        // For errors, de-cycle onto a clone (same prototype, so `instanceof Error`
+        // still holds) rather than mutating the caller's error in place.
+        const newValue = value instanceof Error ?
+            Object.create(Object.getPrototypeOf(value)) :
+            Array.isArray(value) ? [] : {};
         for (const [key2, value2] of Object.entries(value)) {
             path.push(key2);
             newValue[key2] = internalDecircular(value2);

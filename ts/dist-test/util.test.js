@@ -20,18 +20,20 @@ const __1 = require("../");
         node_assert_1.default.equal((0, __1.camelify)('foo-bar'), 'FooBar');
     });
     (0, node_test_1.test)('dive', async () => {
+        // Entries come back in sorted key order (deterministic and identical
+        // across languages), so 'green' precedes 'red' whatever the input order.
         node_assert_1.default.deepStrictEqual((0, __1.dive)({
             color: {
                 red: { x: 1 },
                 green: { x: 2 },
             },
             planet: {
-                mercury: { y: { z: 3 } },
                 venus: { y: { z: 4 } },
+                mercury: { y: { z: 3 } },
             }
         }), [
-            [['color', 'red'], { x: 1 }],
             [['color', 'green'], { x: 2 }],
+            [['color', 'red'], { x: 1 }],
             [['planet', 'mercury'], { y: { z: 3 } }],
             [['planet', 'venus'], { y: { z: 4 } }]
         ]);
@@ -44,6 +46,32 @@ const __1 = require("../");
     });
     (0, node_test_1.test)('pinify', async () => {
         node_assert_1.default.equal((0, __1.pinify)(['a', 'b', 'c', 'd']), 'a:b,c:d');
+    });
+    (0, node_test_1.test)('pinify partial', async () => {
+        // Odd-length paths keep the trailing ':' after the final even index.
+        node_assert_1.default.equal((0, __1.pinify)(['a', 'b', 'c']), 'a:b,c:');
+        node_assert_1.default.equal((0, __1.pinify)(['a']), 'a:');
+        node_assert_1.default.equal((0, __1.pinify)([]), '');
+    });
+    (0, node_test_1.test)('joins types', async () => {
+        node_assert_1.default.equal((0, __1.joins)(['x', 1.5], ':'), 'x:1.5');
+        node_assert_1.default.equal((0, __1.joins)(['x', 2], ':'), 'x:2');
+        node_assert_1.default.equal((0, __1.joins)(['x', 1234567], ':'), 'x:1234567');
+        node_assert_1.default.equal((0, __1.joins)(['x', true], ':'), 'x:true');
+        node_assert_1.default.equal((0, __1.joins)(['x', null], ':'), 'x:');
+    });
+    (0, node_test_1.test)('dive mapper', async () => {
+        const r0 = (0, __1.dive)({ a: { b: 1 }, c: { d: 2 } }, (path, leaf) => [path.join('.'), leaf]);
+        node_assert_1.default.deepStrictEqual(r0, { 'a.b': 1, 'c.d': 2 });
+        // A null key omits the entry from the result.
+        const r1 = (0, __1.dive)({ a: { b: 1 }, c: { d: 2 } }, (path, leaf) => ['b' === path[1] ? null : path.join('.'), leaf]);
+        node_assert_1.default.deepStrictEqual(r1, { 'c.d': 2 });
+    });
+    (0, node_test_1.test)('get array', async () => {
+        node_assert_1.default.equal((0, __1.get)({ a: [10, 20, 30] }, 'a.1'), 20);
+        node_assert_1.default.equal((0, __1.get)([{ x: 1 }], '0.x'), 1);
+        node_assert_1.default.equal((0, __1.get)({ a: [1] }, 'a.5'), undefined);
+        node_assert_1.default.equal((0, __1.get)({ a: [10, 20, 30] }, 'a.01'), undefined);
     });
     (0, node_test_1.test)('entity', async () => {
         const s0 = (0, __1.entity)({
@@ -79,6 +107,10 @@ const __1 = require("../");
         node_assert_1.default.equal((0, __1.stringify)(null), 'null');
         node_assert_1.default.equal((0, __1.stringify)(undefined), undefined);
         node_assert_1.default.equal((0, __1.stringify)(42), '42');
+        // Circular references are de-cycled before serialization.
+        const c = { a: 1 };
+        c.self = c;
+        node_assert_1.default.equal((0, __1.stringify)(c), '{"a":1,"self":"[Circular *]"}');
     });
     (0, node_test_1.test)('decircular', async () => {
         // Simple non-circular object passes through
@@ -148,6 +180,11 @@ const __1 = require("../");
             { key: 'code', title: 'Coding' },
             { key: 'devr', title: 'Developer Relations' },
         ]);
+        // Unknown sort keys are dropped (no null holes in the result).
+        node_assert_1.default.deepStrictEqual((0, __1.order)(items, { order: { sort: 'tech,zzz,code' } }), [
+            { key: 'tech', title: 'Technology' },
+            { key: 'code', title: 'Coding' },
+        ]);
         const nums = {
             '1': { title: '1' },
             '10': { title: '10' },
@@ -166,6 +203,42 @@ const __1 = require("../");
             { title: '10', key: '10', 'title$': '00000000010' },
             { title: 'Technology', key: 'tech', 'title$': '0Technology' }
         ]);
+    });
+    (0, node_test_1.test)('order human$ unicode', async () => {
+        // Padding length is measured in UTF-16 units (String.length), so a
+        // multibyte title pads/sorts the same regardless of byte length.
+        const u = { a: { title: 'é' }, b: { title: '10' } };
+        node_assert_1.default.deepStrictEqual((0, __1.order)(u, { order: { sort: 'human$' } }), [
+            { key: 'a', title: 'é', 'title$': '00é' },
+            { key: 'b', title: '10', 'title$': '010' },
+        ]);
+    });
+    (0, node_test_1.test)('order does not mutate input', async () => {
+        const items = { a: { title: '10' }, b: { title: '2' } };
+        (0, __1.order)(items, { order: { sort: 'human$' } });
+        // No key / title$ leaked back onto the caller's objects.
+        node_assert_1.default.deepStrictEqual(items, { a: { title: '10' }, b: { title: '2' } });
+    });
+    (0, node_test_1.test)('entity skips malformed entries', async () => {
+        // Missing main/ent: returns an empty map rather than throwing.
+        node_assert_1.default.deepStrictEqual((0, __1.entity)({}), {});
+        node_assert_1.default.deepStrictEqual((0, __1.entity)(undefined), {});
+        // A `$`-shaped ent carrying a field has a path shorter than base/name and
+        // is skipped (must not throw or produce an "undefined/..." key).
+        node_assert_1.default.deepStrictEqual((0, __1.entity)({ main: { ent: { '$': { field: { f: { kind: 'x' } } } } } }), {});
+        // An entity with no field map is skipped.
+        node_assert_1.default.deepStrictEqual((0, __1.entity)({ main: { ent: { base: { name: { valid: { a: 'A' } } } } } }), {});
+    });
+    (0, node_test_1.test)('getdlog', async () => {
+        const dlog = (0, __1.getdlog)('rev', '/some/where/file.ts');
+        dlog('phase', 'start');
+        dlog('phase', 'done');
+        const all = (0, __1.getdlog)('rev').log();
+        node_assert_1.default.equal(all.length, 2);
+        node_assert_1.default.equal(all[0][1], 'file.ts');
+        // Filtering by file matches the file field, not the timestamp.
+        node_assert_1.default.equal((0, __1.getdlog)('rev').log('/any/dir/file.ts').length, 2);
+        node_assert_1.default.equal((0, __1.getdlog)('rev').log('nope.ts').length, 0);
     });
 });
 //# sourceMappingURL=util.test.js.map
