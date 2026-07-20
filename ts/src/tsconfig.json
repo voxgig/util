@@ -11,7 +11,8 @@
     "skipLibCheck": true,
     "target": "es2021",
     "declaration": true,
-    "declarationDir": "../dist"
+    "declarationDir": "../dist",
+    "types": ["node"]
   }
 }
 
