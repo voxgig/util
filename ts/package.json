@@ -19,7 +19,7 @@
     "test": "node --enable-source-maps --test dist-test/**/*.test.js",
     "test-some": "node --enable-source-maps --test-name-pattern=\"$npm_config_pattern\" --test dist-test/**/*.test.js",
     "watch": "tsc --build src test -w",
-    "build": "tsc --build src test",
+    "build": "tsc --build src && tsc --build test",
     "clean": "rm -rf node_modules yarn.lock package-lock.json",
     "reset": "npm run clean && npm i && npm run build && npm test",
     "repo-tag": "REPO_VERSION=`node -e \"console.log(require('./package').version)\"` && echo TAG: v$REPO_VERSION && git commit -a -m v$REPO_VERSION && git push && git tag v$REPO_VERSION && git push --tags;",
@@ -38,7 +38,7 @@
     "shape": ">=10"
   },
   "devDependencies": {
-    "@types/node": "26.1.0",
-    "typescript": "^6.0.3"
+    "@types/node": "26.1.1",
+    "typescript": "^7.0.2"
   }
 }
