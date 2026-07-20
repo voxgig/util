@@ -33,7 +33,7 @@ clean-go:
 	cd go && go clean
 
 tags-npm:
-	git tag -l 'v*' --sort=-version:refname
+	git tag -l 'ts/v*' --sort=-version:refname
 
 tags-go:
 	git tag -l 'go/v*' --sort=-version:refname
@@ -54,13 +54,13 @@ publish-npm: build-ts test-ts
 		cd ts && npm version patch --no-git-tag-version >/dev/null; \
 	fi
 	@V=$$(node -p "require('./ts/package.json').version"); \
-		echo "Publishing npm v$$V"; \
+		echo "Publishing ts/v$$V"; \
 		git add ts/package.json && \
 		git commit -m "ts: v$$V" && \
-		git tag v$$V && \
+		git tag ts/v$$V && \
 		(cd ts && npm publish --registry https://registry.npmjs.org --access=public) && \
-		git push origin main v$$V && \
-		if command -v gh >/dev/null 2>&1; then gh release create v$$V --title "v$$V" --notes "npm package release v$$V"; fi
+		git push origin main ts/v$$V && \
+		if command -v gh >/dev/null 2>&1; then gh release create ts/v$$V --title "ts/v$$V" --notes "npm package release v$$V"; fi
 
 # Publish Go module. Defaults to a patch bump on the Version const in go/util.go; override with V=x.y.z.
 publish-go: test-go
@@ -86,12 +86,12 @@ publish-npm-dry: build-ts test-ts
 	@V=$${V:-$$(node -p "const v=require('./ts/package.json').version.split('.'); v[2]=+v[2]+1; v.join('.')")}; \
 		echo "[dry-run] Would bump ts/package.json to v$$V"; \
 		echo "[dry-run] Would git commit -m 'ts: v$$V'"; \
-		echo "[dry-run] Would git tag v$$V"; \
+		echo "[dry-run] Would git tag ts/v$$V"; \
 		echo "[dry-run] Would npm publish (see tarball below)"; \
-		echo "[dry-run] Would git push origin main v$$V"; \
+		echo "[dry-run] Would git push origin main ts/v$$V"; \
 		echo "[dry-run] Tarball contents (npm pack --dry-run):"; \
 		(cd ts && npm pack --dry-run); \
-		echo "[dry-run] Would gh release create v$$V"
+		echo "[dry-run] Would gh release create ts/v$$V"
 
 publish-go-dry: test-go
 	@V=$${V:-$$(awk -F\" '/^const Version = "/{split($$2,a,"."); printf "%d.%d.%d", a[1], a[2], a[3]+1}' go/util.go)}; \
