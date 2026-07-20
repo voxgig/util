@@ -17,23 +17,41 @@ with matching behaviour:
 **TypeScript (`ts/src/util.ts`) is canonical.** The Go package is a port kept in
 parity with it. When you change behaviour:
 
-1. Change TypeScript first, and add/adjust a test in `ts/test/util.test.ts`.
-2. Mirror the change in `go/util.go` and `go/util_test.go`.
+1. Change TypeScript first. For a portable data utility, capture the behaviour as
+   a row in the relevant `test/<fn>.tsv` shared fixture (the parity contract that
+   both suites run); add a TS-only case in `ts/test/util.test.ts` only for things
+   a shared fixture can't express (mapper functions, cycles, `undefined`, the
+   logging helpers, documented divergences).
+2. Mirror the change in `go/util.go`. The shared fixtures already exercise Go;
+   add a Go-only case in `go/util_test.go` for typed/defensive branches (typed
+   `int`/`int64`, non-finite floats, cycles, nil maps).
 3. Rebuild TypeScript (`npm run build`) — `ts/dist/` and `ts/dist-test/` are committed.
-4. Run both test suites; keep `gofmt`/`go vet` clean.
+4. Run both test suites; keep `gofmt`/`go vet` clean. Data utilities are kept at
+   100% coverage in both languages (the Node/Pino logging helpers are best-effort).
 5. Update the docs in `docs/` and the quick-reference below if the API changed.
 
 Never let the Go behaviour drift from the TypeScript semantics.
+
+### Shared parity fixtures
+
+`test/*.tsv` (one file per portable function) are tab-separated with columns
+`name`, `args` (a JSON array of the logical arguments), and `expected` (the
+canonical result as JSON). Both suites load them, map `args` to a real call via a
+tiny adapter, and compare as canonical JSON. The `.tsv` files are the source of
+truth — edit them directly (no generator). `order`'s spec is carried as the
+neutral `{sort,exclude,include}`; each adapter wraps it (`{order:{…}}` in TS, a
+flat `OrderSpec` in Go).
 
 ## Repository map
 
 ```
 ts/src/util.ts       TypeScript source (CANONICAL)
-ts/test/util.test.ts TypeScript tests (node:test)
+ts/test/util.test.ts TypeScript tests (node:test): shared-spec runner + TS-only cases
 ts/dist/             Compiled JS + .d.ts (committed; regenerate with npm run build)
 ts/dist-test/        Compiled tests (committed; the test runner target)
 go/util.go           Go port
-go/util_test.go      Go tests
+go/util_test.go      Go tests: shared-spec runner + Go-only cases
+test/                Shared cross-language parity fixtures (*.tsv), consumed by BOTH suites
 docs/                Human documentation
 .github/workflows/   CI workflow definitions
 ```
@@ -43,14 +61,16 @@ docs/                Human documentation
 ```bash
 # TypeScript (from ts/)
 npm install
-npm run build        # tsc --build src test
+npm run build        # tsc --build src && tsc --build test
 npm test             # node --test dist-test/**/*.test.js
+node --enable-source-maps --experimental-test-coverage --test dist-test/**/*.test.js  # coverage
 
 # Go (from go/)
 go build ./...
 go vet ./...
 go test ./...
-gofmt -l .           # prints nothing when formatted
+go test -cover ./...   # statement coverage (kept at 100%)
+gofmt -l .             # prints nothing when formatted
 ```
 
 `pino`, `pino-pretty`, and `shape` are peer dependencies; `shape` requires
@@ -93,25 +113,40 @@ Full signatures, parameters, edge cases, and examples: [TypeScript API](docs/api
   general `seps[j]` at every `2^j`-th boundary (the coarsest applicable wins).
 - **`pinify` keeps a trailing `:`** after a final even-indexed element:
   `pinify(['a','b','c'])` is `'a:b,c:'`, not `'a:b,c'`.
-- **`dive` visits keys in sorted order** in both languages, so its output (and
-  that of `DiveMap`/`Entity`) is deterministic and identical across the ports.
-  It does **not** preserve insertion order.
+- **`dive` visits object keys in sorted order** and **array indices in numeric
+  order** (`0,1,…,10` — not lexicographic) in both languages, so its output (and
+  that of `DiveMap`/`Entity`) is deterministic and identical across the ports. It
+  does **not** preserve insertion order. Non-empty arrays are descended into
+  (paths use the index as a string); empty objects/arrays are leaves.
 - **`order` with no `sort`** is the one remaining cross-language *order*
   difference: TypeScript keeps insertion order; Go (no insertion order to draw
   on) returns lexicographic key order. Both are deterministic — pass an explicit
   `sort` for identical output.
 - **`order` sort tokens**: `alpha$` (sort remaining items by title) and
-  `human$` (natural sort: titles zero-padded to equal length, so `'2'` < `'10'`).
-  `exclude` wins over `include`. Unknown keys in `sort` are dropped.
+  `human$` (natural sort: titles zero-padded to equal length, so `'2'` < `'10'`;
+  padding is UTF-16 code units). A non-string `title` is `String()`-coerced (so
+  numeric titles sort numerically under `human$`); a missing title sorts as `''`.
+  `exclude` wins over `include`. Unknown keys in `sort` are dropped. Tokens split
+  on `/\s*,\s*/` (Go included), keeping empty tokens.
 - **`stringify` de-cycles first** in both languages; cyclic input yields
-  `[Circular *path]` markers rather than throwing.
+  `[Circular *path]` markers rather than throwing, and non-finite floats
+  (`NaN`/`±Inf`) serialise as `null`.
 - **`get`/`GetPath` array indexing** accepts only canonical integer segments
   (`'0'`, `'1'`, …); `'01'`/`'+1'` resolve to `undefined`/`nil`, matching JS.
-- **Numbers in `joins`**: Go renders `float64` to match JS `String()` for all
-  realistic magnitudes; only JS's exponential range (`>=1e21`, `<1e-6`) differs.
-- **Malformed input**: both implementations are defensive — `entity` skips
-  entries that don't resolve to a `base/name` pair or lack a `field`, and
-  `order` treats a missing `title` as empty rather than throwing.
+  Both walk maps and arrays only; JS-style indexing into a string (or `.length`)
+  is TS-only.
+- **`joins` element rendering**: strings as-is, numbers/booleans via `String`,
+  `null`/`undefined` → `''`, and **objects/arrays as JSON** (both languages) —
+  not JS's `[object Object]`. Go renders `float64` to match JS `String()`
+  (`Infinity`/`-Infinity`/`NaN` spelled out, `-0` → `0`) for all realistic
+  magnitudes; only JS's exponential range (`>=1e21`, `<1e-6`) differs.
+- **Malformed input**: both implementations are defensive and agree — `entity`
+  skips entries that don't resolve to a `base/name` pair, whose `ent`/`field`
+  isn't a plain object (an array is skipped), or whose field value is
+  `null`/primitive (the TS no longer throws here); a `valid` string with no
+  `kind` yields `.valid` (not `undefined.valid`), a falsy `valid` is ignored, and
+  missing `main`/`ent` yields `{}`. `order` treats a missing/non-string `title`
+  as its `String()` form.
 
 These divergences and their rationale are explained in [docs/explanation.md](docs/explanation.md).
 

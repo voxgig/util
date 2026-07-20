@@ -62,7 +62,11 @@ order**, so the output is deterministic and identical to the Go port.
 
 - **`depth`** — how many levels to descend. Default `2`. A branch is collected as
   a leaf when it reaches the depth limit, or when the value is `null`, not an
-  object, or an object with no own keys.
+  object, an empty object, or an empty array.
+- **arrays** — a non-empty array is descended into just like an object, using
+  its indices (as strings) for the path. Indices are visited in **numeric**
+  order (`'0','1',…,'10','11'`), so `dive({ tags: ['a', 'b'] })` yields
+  `[[['tags','0'],'a'], [['tags','1'],'b']]`.
 - **`$` key** — a child under the key `$` contributes its value at the *current*
   path (the `$` is not added to the path), letting an interior node carry a value
   while still having children.
@@ -121,12 +125,19 @@ joins(arr: any[], ...seps: string[]): string
 Join array elements using a hierarchy of separators, listed finest-first.
 `seps[0]` is placed between every element; `seps[1]` replaces it at every 2nd
 boundary; `seps[2]` at every 4th; in general `seps[j]` applies at each `2^j`-th
-boundary, and the coarsest applicable separator wins. Elements are stringified as
-`Array.prototype.join` would (so `null`/`undefined` → empty string).
+boundary, and the coarsest applicable separator wins.
+
+Each element is stringified: `null`/`undefined` → empty string, strings as-is,
+numbers/booleans via `String`, and **objects and arrays as JSON**
+(`JSON.stringify`) — matching the Go port, rather than JS's default
+`'[object Object]'` or recursive comma-join. A value that cannot be serialised
+(a cycle, a function) yields the empty string.
 
 ```ts
 joins(['a', 1, 'b', 2, 'c', 3, 'd', 4], ':', ',', '/')   // 'a:1,b:2/c:3,d:4'
 joins(['a', 'b', 'c'], '-')                               // 'a-b-c'
+joins(['x', { a: 1 }], ':')                               // 'x:{"a":1}'
+joins(['x', [1, 2]], ':')                                 // 'x:[1,2]'
 joins([], ':')                                            // ''
 ```
 
@@ -210,8 +221,12 @@ Each entity (addressed `base/name`) becomes an entry whose `valid_json` merges
 the entity's own `valid` object with a validation derived from each field:
 
 - start from `field[name].kind`;
-- if `field[name].valid` is a string, append `'.' + valid`;
-- if it is an object, use that object as the validation.
+- if `field[name].valid` is a **truthy** string, use `kind + '.' + valid` (a
+  missing `kind` contributes `''`, so the result is `.valid`, never
+  `undefined.valid`);
+- if it is a truthy non-string, use that value as the validation;
+- a falsy `valid` (`false`, `0`, `''`, `null`) is ignored, keeping `kind`;
+- when neither a `kind` nor a usable `valid` is present, the field is omitted.
 
 ```ts
 entity({
@@ -222,6 +237,11 @@ entity({
 })
 // { 'qaz/zed': { valid_json: { '$$': 'Open', foo: { a: 'Number' } } } }
 ```
+
+The traversal is defensive: an entry that does not resolve to a `base/name`
+pair, an `ent`/`field` that is not a plain object (an array is skipped), and a
+`null`/primitive field value are all skipped rather than throwing. Missing
+`main`/`ent` yields `{}`.
 
 > Marked as a work in progress in the source: it currently handles only
 > `base/name`-style entities.
@@ -258,8 +278,10 @@ decircular(object?: any): any
 Return a deep copy of `object` with circular references replaced by a
 `[Circular *path]` string, where `path` is the dotted path to the first
 occurrence. Non-objects are returned unchanged; arrays and plain objects are
-copied; `Error` instances are passed through. A value shared by siblings (a
-non-cyclic DAG) is fully expanded each time.
+copied. An `Error` instance is cloned onto the same prototype (so the result is
+still `instanceof Error`) and its own **enumerable** properties are walked —
+`message`/`stack` are non-enumerable and so are excluded. A value shared by
+siblings (a non-cyclic DAG) is fully expanded each time.
 
 ```ts
 decircular({ a: 1, b: { c: 2 } })   // { a: 1, b: { c: 2 } }

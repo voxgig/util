@@ -5,13 +5,39 @@ package util
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"unicode"
-	"unicode/utf8"
 )
+
+// jsTruthy reports whether v is truthy under JavaScript rules. The falsy values
+// are false, 0 (and -0), "", nil (null/undefined) and NaN; everything else —
+// including any map or slice — is truthy. Used where the canonical TS relies on
+// `if (value)` rather than a presence check.
+func jsTruthy(v any) bool {
+	switch x := v.(type) {
+	case nil:
+		return false
+	case bool:
+		return x
+	case string:
+		return x != ""
+	case float64:
+		return x != 0 && !math.IsNaN(x)
+	case float32:
+		return x != 0 && !math.IsNaN(float64(x))
+	case int:
+		return x != 0
+	case int64:
+		return x != 0
+	default:
+		return true
+	}
+}
 
 // Version is the released version of the Go module. It is rewritten by
 // `make publish-go V=x.y.z` to match the git tag (go/vx.y.z).
@@ -67,26 +93,55 @@ func hasOwnKeys(m map[string]any) bool {
 	return false
 }
 
-func diveInternal(node map[string]any, d int, prefix []string, items *[]DiveEntry) {
-	if node == nil {
+// diveRecursable reports whether a child value should be descended into (rather
+// than emitted as a leaf): a non-empty object or a non-empty array. Mirrors the
+// canonical TS test `'object' === typeof child && hasOwnKeys(child)`.
+func diveRecursable(child any) bool {
+	switch c := child.(type) {
+	case map[string]any:
+		return hasOwnKeys(c)
+	case []any:
+		return len(c) > 0
+	default:
+		return false
+	}
+}
+
+func diveInternal(node any, d int, prefix []string, items *[]DiveEntry) {
+	// Build the ordered key list and a value accessor per node kind. Object keys
+	// are visited in sorted order (Go map iteration is randomised); array indices
+	// in numeric order (0,1,…,10,11) — both matching the canonical TS.
+	var keys []string
+	var get func(string) any
+	switch n := node.(type) {
+	case map[string]any:
+		if n == nil {
+			return
+		}
+		keys = make([]string, 0, len(n))
+		for k := range n {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		get = func(k string) any { return n[k] }
+	case []any:
+		keys = make([]string, 0, len(n))
+		for i := range n {
+			keys = append(keys, strconv.Itoa(i))
+		}
+		get = func(k string) any { i, _ := strconv.Atoi(k); return n[i] }
+	default:
 		return
 	}
-	// Iterate keys in sorted order for deterministic output (Go map iteration
-	// is randomised); matches the canonical TS, which also sorts keys.
-	keys := make([]string, 0, len(node))
-	for k := range node {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
 	for _, key := range keys {
-		child := node[key]
+		child := get(key)
 		if key == "$" {
 			pathCopy := make([]string, len(prefix))
 			copy(pathCopy, prefix)
 			*items = append(*items, DiveEntry{Path: pathCopy, Value: child})
-		} else if childMap, ok := child.(map[string]any); ok && d > 1 && hasOwnKeys(childMap) {
+		} else if d > 1 && diveRecursable(child) {
 			newPrefix := append(append([]string{}, prefix...), key)
-			diveInternal(childMap, d-1, newPrefix, items)
+			diveInternal(child, d-1, newPrefix, items)
 		} else {
 			newPath := append(append([]string{}, prefix...), key)
 			*items = append(*items, DiveEntry{Path: newPath, Value: child})
@@ -182,6 +237,17 @@ func toString(v any) string {
 	case int64:
 		return strconv.FormatInt(val, 10)
 	case float64:
+		// Match JS String() for non-finite and signed-zero values first.
+		if math.IsInf(val, 1) {
+			return "Infinity"
+		}
+		if math.IsInf(val, -1) {
+			return "-Infinity"
+		}
+		if val == 0 {
+			// Normalise -0 to "0" (JS String(-0) === "0"); FormatFloat keeps the sign.
+			return "0"
+		}
 		// 'f' with precision -1 gives the shortest round-trippable fixed-point
 		// form, matching JS String(): whole numbers print without ".0" (2 not
 		// "2.0") and full digits are kept (1234567 not "1.234567e+06"). Only the
@@ -241,7 +307,10 @@ func Order(itemMap map[string]map[string]any, spec *OrderSpec) []map[string]any 
 
 	for _, k := range keys {
 		item := copyMap(itemMap[k])
-		if _, ok := item["key"]; !ok {
+		// Mirror TS `key: v.key ?? k`: fall back to the map key when the preset
+		// key is absent OR nil (a present-but-nil key would otherwise be dropped
+		// by the string-typed filter/sort guards below).
+		if v, ok := item["key"]; !ok || v == nil {
 			item["key"] = k
 		}
 		items = append(items, item)
@@ -271,7 +340,7 @@ func orderSort(items []map[string]any, spec *OrderSpec) []map[string]any {
 		return items
 	}
 
-	keyOrder := splitTrim(spec.Sort)
+	keyOrder := splitTokens(spec.Sort)
 
 	keyOrderSet := make(map[string]bool)
 	for _, k := range keyOrder {
@@ -300,8 +369,8 @@ func orderSort(items []map[string]any, spec *OrderSpec) []map[string]any {
 			maxLen := 0
 			for _, item := range filtered {
 				t := getTitle(item)
-				// UTF-16/rune length to match JS String.length (= runes for BMP).
-				if l := utf8.RuneCountInString(t); l > maxLen {
+				// UTF-16 code-unit length, matching JS String.length exactly.
+				if l := utf16Len(t); l > maxLen {
 					maxLen = l
 				}
 			}
@@ -352,17 +421,32 @@ func filterItems(items []map[string]any, excludeSet map[string]bool) []map[strin
 	return result
 }
 
+// getTitle returns the item's title coerced to a string the way the canonical
+// TS does (`” + (title ?? ”)`): a missing/nil title is "", and a non-string
+// title (number, bool, …) is string-coerced via toString rather than dropped.
 func getTitle(item map[string]any) string {
-	if t, ok := item["title"].(string); ok {
-		return t
-	}
-	return ""
+	return toString(item["title"])
 }
 
-// padStart left-pads s to length measured in runes, matching JS String.padStart
-// (which counts UTF-16 units; equal to runes for BMP text).
+// utf16Len counts the UTF-16 code units in s, matching JS String.length exactly
+// (a code point >= U+10000 counts as 2, the surrogate pair). Equals the rune
+// count for Basic-Multilingual-Plane text.
+func utf16Len(s string) int {
+	n := 0
+	for _, r := range s {
+		if r > 0xFFFF {
+			n += 2
+		} else {
+			n++
+		}
+	}
+	return n
+}
+
+// padStart left-pads s to length measured in UTF-16 code units, matching JS
+// String.padStart / String.length.
 func padStart(s string, length int, pad rune) string {
-	n := utf8.RuneCountInString(s)
+	n := utf16Len(s)
 	if n >= length {
 		return s
 	}
@@ -373,7 +457,7 @@ func orderExclude(items []map[string]any, spec *OrderSpec) []map[string]any {
 	if spec.Exclude == "" {
 		return items
 	}
-	excludes := splitTrim(spec.Exclude)
+	excludes := splitTokens(spec.Exclude)
 	excludeSet := make(map[string]bool)
 	for _, e := range excludes {
 		excludeSet[e] = true
@@ -391,7 +475,7 @@ func orderInclude(items []map[string]any, spec *OrderSpec) []map[string]any {
 	if spec.Include == "" {
 		return items
 	}
-	includes := splitTrim(spec.Include)
+	includes := splitTokens(spec.Include)
 	includeSet := make(map[string]bool)
 	for _, inc := range includes {
 		includeSet[inc] = true
@@ -405,27 +489,26 @@ func orderInclude(items []map[string]any, spec *OrderSpec) []map[string]any {
 	return result
 }
 
-func splitTrim(s string) []string {
-	parts := strings.Split(s, ",")
-	result := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			result = append(result, p)
-		}
-	}
-	return result
+// orderTokenSep matches the JS split pattern /\s*,\s*/ used by order: commas
+// with any surrounding whitespace. Splitting with it (and keeping empty tokens)
+// reproduces the canonical TS token list exactly.
+var orderTokenSep = regexp.MustCompile(`\s*,\s*`)
+
+func splitTokens(s string) []string {
+	return orderTokenSep.Split(s, -1)
 }
 
 // Entity processes a model to extract entity field validation.
 func Entity(model map[string]any) map[string]any {
+	// A missing/non-map main or ent yields an empty map (matching TS, whose
+	// dive of undefined produces no entries), not nil.
 	main, _ := model["main"].(map[string]any)
 	if main == nil {
-		return nil
+		return map[string]any{}
 	}
 	ent, _ := main["ent"].(map[string]any)
 	if ent == nil {
-		return nil
+		return map[string]any{}
 	}
 
 	entries := Dive(ent)
@@ -461,16 +544,32 @@ func Entity(model map[string]any) map[string]any {
 				continue
 			}
 
-			fv := field["kind"]
-			if fieldValid, ok := field["valid"]; ok {
-				switch v := fieldValid.(type) {
-				case string:
-					fv = toString(fv) + "." + v
-				default:
-					fv = v
-				}
+			// Mirror the canonical TS exactly, including its null/undefined
+			// distinction: fv is "defined" if a kind key is present (even nil) or
+			// a truthy valid supplies a value; an undefined fv omits the key.
+			kindVal, hasKind := field["kind"]
+			var fv any
+			hasFv := false
+			if hasKind {
+				fv = kindVal
+				hasFv = true
 			}
-			valid[name] = fv
+			if jsTruthy(field["valid"]) {
+				if s, ok := field["valid"].(string); ok {
+					// A null/undefined kind coerces to "" (not "undefined").
+					base := ""
+					if kindVal != nil {
+						base = toString(kindVal)
+					}
+					fv = base + "." + s
+				} else {
+					fv = field["valid"]
+				}
+				hasFv = true
+			}
+			if hasFv {
+				valid[name] = fv
+			}
 		}
 
 		key := path[0] + "/" + path[1]
@@ -496,7 +595,9 @@ func Stringify(val any) string {
 // "[Circular *path]" strings, where path is the dotted path to the first
 // occurrence. It mirrors the canonical TS decircular, detecting cycles by
 // object identity on the current traversal path. Only map[string]any and []any
-// are recursed into; all other values are returned unchanged.
+// are recursed into; non-finite floats (NaN, ±Inf) normalise to nil so that
+// Stringify emits null (as JSON.stringify does); all other values are returned
+// unchanged.
 func Decircular(val any) any {
 	seen := make(map[uintptr][]string)
 	var path []string
@@ -555,6 +656,22 @@ func decircularWalk(val any, seen map[uintptr][]string, path *[]string) any {
 		}
 		delete(seen, ptr)
 		return result
+
+	case float64:
+		// JSON has no NaN/Infinity; JS JSON.stringify serialises them as null, so
+		// normalise non-finite floats to nil here (Go's json.Marshal would error
+		// and Stringify would otherwise discard the whole payload).
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return nil
+		}
+		return v
+
+	case float32:
+		f := float64(v)
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return nil
+		}
+		return v
 
 	default:
 		return val

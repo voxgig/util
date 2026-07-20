@@ -1,0 +1,7 @@
+name	args	expected
+four	[["a", "b", "c", "d"]]	"a:b,c:d"
+three	[["a", "b", "c"]]	"a:b,c:"
+one	[["a"]]	"a:"
+empty	[[]]	""
+five	[["a", "b", "c", "d", "e"]]	"a:b,c:d,e:"
+empties	[["", "", ""]]	":,:"

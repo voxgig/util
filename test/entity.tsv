@@ -1,0 +1,20 @@
+name	args	expected
+happy	[{"main": {"ent": {"qaz": {"zed": {"valid": {"$$": "Open"}, "field": {"foo": {"valid": {"a": "Number"}}}}}}}}]	{"qaz/zed": {"valid_json": {"$$": "Open", "foo": {"a": "Number"}}}}
+empty-model	[{}]	{}
+main-only	[{"main": {}}]	{}
+dollar-shaped	[{"main": {"ent": {"$": {"field": {"f": {"kind": "x"}}}}}}]	{}
+scalar-ent	[{"main": {"ent": {"base": {"name": "x"}}}}]	{}
+no-field	[{"main": {"ent": {"base": {"name": {"valid": {"a": "A"}}}}}}]	{}
+kind-string-valid	[{"main": {"ent": {"b": {"n": {"field": {"f": {"kind": "String", "valid": "email"}}}}}}}]	{"b/n": {"valid_json": {"f": "String.email"}}}
+no-kind-string-valid	[{"main": {"ent": {"b": {"n": {"field": {"Foo": {"valid": "Foo"}}}}}}}]	{"b/n": {"valid_json": {"Foo": ".Foo"}}}
+empty-field-obj	[{"main": {"ent": {"b": {"n": {"field": {"f": {}}}}}}}]	{"b/n": {"valid_json": {}}}
+falsy-valid	[{"main": {"ent": {"b": {"n": {"field": {"f": {"kind": "K", "valid": false}}}}}}}]	{"b/n": {"valid_json": {"f": "K"}}}
+null-field-value	[{"main": {"ent": {"b": {"n": {"field": {"f": null}}}}}}]	{"b/n": {"valid_json": {}}}
+array-field	[{"main": {"ent": {"b": {"n": {"field": [{"kind": "x"}]}}}}}]	{}
+scalar-field	[{"main": {"ent": {"b": {"n": {"field": "nope"}}}}}]	{}
+primitive-field-value	[{"main": {"ent": {"b": {"n": {"field": {"f": "nope"}}}}}}]	{"b/n": {"valid_json": {}}}
+kind-null	[{"main": {"ent": {"b": {"n": {"field": {"f": {"kind": null}}}}}}}]	{"b/n": {"valid_json": {"f": null}}}
+valid-object	[{"main": {"ent": {"b": {"n": {"field": {"f": {"kind": "K", "valid": {"x": 1}}}}}}}}]	{"b/n": {"valid_json": {"f": {"x": 1}}}}
+valid-zero	[{"main": {"ent": {"b": {"n": {"field": {"f": {"kind": "K", "valid": 0}}}}}}}]	{"b/n": {"valid_json": {"f": "K"}}}
+valid-number	[{"main": {"ent": {"b": {"n": {"field": {"f": {"kind": "K", "valid": 5}}}}}}}]	{"b/n": {"valid_json": {"f": 5}}}
+ent-valid-merge	[{"main": {"ent": {"b": {"n": {"valid": {"$$": "Open"}, "field": {"f": {"kind": "K"}}}}}}}]	{"b/n": {"valid_json": {"$$": "Open", "f": "K"}}}

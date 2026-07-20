@@ -1,0 +1,13 @@
+name	args	expected
+simple	[{"a": {"b": 1}}, "a.b"]	1
+deep	[{"service": {"db": {"port": 5432}}}, "service.db.port"]	5432
+missing	[{"a": {}}, "a.b.c"]	null
+array-index	[{"a": [10, 20, 30]}, "a.1"]	20
+array-elem-field	[[{"x": 1}], "0.x"]	1
+array-oob	[{"a": [1]}, "a.5"]	null
+non-canonical-idx	[{"a": [10, 20, 30]}, "a.01"]	null
+non-numeric-idx	[{"a": [1, 2]}, "a.x"]	null
+negative-idx	[{"a": [1, 2]}, "a.-1"]	null
+scalar-mid-path	[{"a": 5}, "a.b"]	null
+array-path	[{"a": {"b": 1}}, ["a", "b"]]	1
+nil-root	[null, "a.b"]	null
