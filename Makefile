@@ -1,4 +1,4 @@
-.PHONY: all build test clean build-ts build-go test-ts test-go clean-ts clean-go publish-npm publish-go tags-npm tags-go reset
+.PHONY: all build test clean build-ts build-go test-ts test-go clean-ts clean-go publish publish-npm publish-go tags-npm tags-go reset
 
 all: build test
 
@@ -33,6 +33,9 @@ tags-go:
 
 tags-npm:
 	git tag -l 'v*' --sort=-version:refname
+
+# Publish both npm and Go with patch version bumps.
+publish: publish-npm publish-go
 
 # Publish npm package with a patch version bump.
 # Bumps ts/package.json, commits, tags vX.Y.Z, pushes, publishes to npm.
