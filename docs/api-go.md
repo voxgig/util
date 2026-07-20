@@ -298,9 +298,10 @@ func Decircular(val any) any
 Return a deep copy of `val` with circular references replaced by
 `[Circular *path]`, where `path` is the dotted path to the first occurrence.
 Recurses into `map[string]any` and `[]any` (using their identity to detect
-cycles); non-finite floats (`NaN`, `±Inf`) normalise to `nil` (so
-[`Stringify`](#stringify) can emit `null`); other values are returned unchanged.
-A value shared by siblings (a non-cyclic DAG) is expanded each time.
+cycles); all other values — including non-finite floats — are returned unchanged,
+matching the canonical TS `decircular` (which leaves `NaN`/`±Inf` intact;
+[`Stringify`](#stringify) nulls them at serialisation time). A value shared by
+siblings (a non-cyclic DAG) is expanded each time.
 
 > Unlike the TS `decircular`, this port does not special-case `error` values
 > (TS clones `Error` instances and walks their enumerable properties). A Go

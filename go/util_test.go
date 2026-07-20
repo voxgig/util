@@ -283,12 +283,50 @@ func TestStringifyNonFinite(t *testing.T) {
 	if got := Stringify(math.Inf(1)); got != "null" {
 		t.Errorf("Stringify(Inf) = %q", got)
 	}
+	// Non-finite inside a slice is nulled too.
+	if got := Stringify([]any{1.0, math.Inf(-1)}); got != `[1,null]` {
+		t.Errorf("Stringify(slice Inf) = %q", got)
+	}
 	// float32 non-finite normalises to null; a finite float32 passes through.
 	if got := Stringify(map[string]any{"x": float32(math.Inf(-1))}); got != `{"x":null}` {
 		t.Errorf("Stringify(float32 -Inf) = %q", got)
 	}
 	if got := Stringify(float32(1.5)); got != "1.5" {
 		t.Errorf("Stringify(float32 1.5) = %q", got)
+	}
+}
+
+func TestDecircularPreservesNonFinite(t *testing.T) {
+	// Decircular is a faithful deep-copy: non-finite floats are preserved (only
+	// Stringify normalises them), matching the canonical TS decircular.
+	if v, ok := Decircular(math.NaN()).(float64); !ok || !math.IsNaN(v) {
+		t.Errorf("Decircular(NaN) = %v, want NaN preserved", Decircular(math.NaN()))
+	}
+	out, _ := Decircular(map[string]any{"x": math.Inf(1)}).(map[string]any)
+	if v, ok := out["x"].(float64); !ok || !math.IsInf(v, 1) {
+		t.Errorf("Decircular({x:Inf}) did not preserve Inf: %v", out)
+	}
+}
+
+func TestJoinsObjectNonFiniteAndCycle(t *testing.T) {
+	// Non-finite nested in a joined object/array is nulled (matches TS).
+	if got := Joins([]any{"x", map[string]any{"a": math.NaN()}}, ":"); got != `x:{"a":null}` {
+		t.Errorf("Joins(obj NaN) = %q", got)
+	}
+	if got := Joins([]any{"x", []any{1.0, math.Inf(1)}}, ":"); got != "x:[1,null]" {
+		t.Errorf("Joins(arr Inf) = %q", got)
+	}
+	// A cyclic element renders empty (json.Marshal reports a cycle), matching
+	// TS's JSON.stringify throw -> ''.
+	m := map[string]any{"k": 1}
+	m["self"] = m
+	if got := Joins([]any{"x", m}, ":"); got != "x:" {
+		t.Errorf("Joins(cyclic obj) = %q, want %q", got, "x:")
+	}
+	// A value json cannot marshal even after nulling non-finite (a channel)
+	// also renders empty.
+	if got := Joins([]any{"x", make(chan int)}, ":"); got != "x:" {
+		t.Errorf("Joins(chan) = %q, want %q", got, "x:")
 	}
 }
 
@@ -302,7 +340,9 @@ func TestJsTruthy(t *testing.T) {
 		{float64(0), false}, {float64(1), true}, {math.NaN(), false},
 		{float32(0), false}, {float32(2), true}, {float32(math.NaN()), false},
 		{0, false}, {3, true},
+		{int32(0), false}, {int32(9), true},
 		{int64(0), false}, {int64(4), true},
+		{uint(0), false}, {uint(1), true}, {uint8(0), false},
 		{[]any{}, true}, {map[string]any{}, true},
 	}
 	for _, c := range cases {

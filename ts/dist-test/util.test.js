@@ -111,6 +111,18 @@ const ADAPTERS = {
         node_assert_1.default.equal((0, __1.joins)(['x', Infinity, 'y', -Infinity], ':'), 'x:Infinity:y:-Infinity');
         node_assert_1.default.equal((0, __1.joins)(['x', NaN], ':'), 'x:NaN');
     });
+    (0, node_test_1.test)('joins nulls non-finite numbers nested in an object/array element', () => {
+        // Inside a serialised container, non-finite numbers become null (both
+        // languages); the Go port normalises them before json.Marshal.
+        node_assert_1.default.equal((0, __1.joins)(['x', { a: NaN, b: Infinity }], ':'), 'x:{"a":null,"b":null}');
+        node_assert_1.default.equal((0, __1.joins)(['x', [1, NaN]], ':'), 'x:[1,null]');
+    });
+    (0, node_test_1.test)('dive skips holes in a sparse array', () => {
+        // Object.keys omits holes, so no spurious `undefined` leaf is produced.
+        const sparse = [];
+        sparse[1] = 'y';
+        node_assert_1.default.deepStrictEqual((0, __1.dive)({ a: sparse }), [[['a', '1'], 'y']]);
+    });
     (0, node_test_1.test)('joins non-serialisable elements render empty', () => {
         // A function serialises to undefined -> '' (matches Go's json.Marshal path).
         node_assert_1.default.equal((0, __1.joins)(['x', () => 1], ':'), 'x:');

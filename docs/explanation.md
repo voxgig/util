@@ -119,9 +119,10 @@ array by recursively comma-joining it; the Go port always produced JSON
 canonical TypeScript was brought to match it: objects and arrays are rendered
 with `JSON.stringify`, and a value that cannot be serialised yields `''`. This is
 the one place where a divergence was resolved by changing the canonical side
-rather than the port. (Multi-key objects can still differ in *key order* — TS
-preserves insertion order, Go's `json.Marshal` sorts keys — the same caveat that
-applies to `stringify`.)
+rather than the port. To make the match exact, the TypeScript canonicalises the
+object first — sorting keys so the output equals Go's key-sorted `json.Marshal`,
+and (like `JSON.stringify`) rendering any nested non-finite number as `null`,
+which the Go `toString` also does before marshalling.
 
 ### Text length: UTF-16 code units
 

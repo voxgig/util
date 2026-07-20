@@ -154,6 +154,22 @@ describe('ts-only', () => {
   })
 
 
+  test('joins nulls non-finite numbers nested in an object/array element', () => {
+    // Inside a serialised container, non-finite numbers become null (both
+    // languages); the Go port normalises them before json.Marshal.
+    assert.equal(joins(['x', { a: NaN, b: Infinity }], ':'), 'x:{"a":null,"b":null}')
+    assert.equal(joins(['x', [1, NaN]], ':'), 'x:[1,null]')
+  })
+
+
+  test('dive skips holes in a sparse array', () => {
+    // Object.keys omits holes, so no spurious `undefined` leaf is produced.
+    const sparse: any[] = []
+    sparse[1] = 'y'
+    assert.deepStrictEqual(dive({ a: sparse }), [[['a', '1'], 'y']])
+  })
+
+
   test('joins non-serialisable elements render empty', () => {
     // A function serialises to undefined -> '' (matches Go's json.Marshal path).
     assert.equal(joins(['x', () => 1], ':'), 'x:')

@@ -128,10 +128,11 @@ boundary; `seps[2]` at every 4th; in general `seps[j]` applies at each `2^j`-th
 boundary, and the coarsest applicable separator wins.
 
 Each element is stringified: `null`/`undefined` → empty string, strings as-is,
-numbers/booleans via `String`, and **objects and arrays as JSON**
-(`JSON.stringify`) — matching the Go port, rather than JS's default
-`'[object Object]'` or recursive comma-join. A value that cannot be serialised
-(a cycle, a function) yields the empty string.
+numbers/booleans via `String`, and **objects and arrays as JSON** — matching the
+Go port, rather than JS's default `'[object Object]'` or recursive comma-join.
+Object keys are sorted and nested non-finite numbers become `null`, so the output
+is identical to Go's `json.Marshal`. A value that cannot be serialised (a cycle,
+a function) yields the empty string.
 
 ```ts
 joins(['a', 1, 'b', 2, 'c', 3, 'd', 4], ':', ',', '/')   // 'a:1,b:2/c:3,d:4'

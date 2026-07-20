@@ -112,8 +112,11 @@ function diveInternal(node: any, d: number, prefix: string[], items: any[]): voi
   // output; array indices are visited in numeric order (0,1,…,10,11 — not the
   // lexicographic 0,1,10,11,2 that Object.keys(arr).sort() would give), so the
   // Go port can reproduce the exact same order.
+  // Object.keys already yields array indices in ascending numeric order and
+  // skips holes in a sparse array; object keys are sorted for a deterministic,
+  // cross-language-stable order.
   const keys: string[] = Array.isArray(obj) ?
-    obj.map((_: any, i: number) => '' + i) :
+    Object.keys(obj) :
     Object.keys(obj).sort()
   for (const key of keys) {
     const child = (obj as any)[key]
@@ -158,19 +161,40 @@ function dive(node: any, depth?: number | DiveMapper, mapper?: DiveMapper): any 
 }
 
 
+// Recursively sort object keys so an object/array element renders identically to
+// the Go port (whose json.Marshal sorts map keys). Cycle-aware: a revisited node
+// is returned as-is, so JSON.stringify still throws on a genuine cycle. A DAG
+// (shared non-cyclic sibling) is expanded each time, matching JSON.stringify.
+function canonicalize(v: any, seen: WeakSet<any> = new WeakSet()): any {
+  if (null == v || 'object' !== typeof v) {
+    return v
+  }
+  if (seen.has(v)) {
+    return v
+  }
+  seen.add(v)
+  const out = Array.isArray(v) ?
+    v.map((e: any) => canonicalize(e, seen)) :
+    Object.keys(v).sort().reduce((a: any, k: string) => (a[k] = canonicalize(v[k], seen), a), {})
+  seen.delete(v)
+  return out
+}
+
+
 // Render a single joins element to a string. Primitives coerce as JS would
 // (numbers/booleans via String, null/undefined to ''), while objects and arrays
-// serialise to JSON — matching the Go port's toString (json.Marshal), rather
-// than JS's default '[object Object]' / recursive comma-join. A value that
-// cannot be serialised (a cycle, a function) yields '' (as Go's json.Marshal
-// error path does).
+// serialise to JSON with sorted keys — matching the Go port's toString
+// (json.Marshal), rather than JS's default '[object Object]' / recursive
+// comma-join. Non-finite numbers serialise as null (JSON.stringify). A value
+// that cannot be serialised (a cycle, a function) yields '' (as Go's
+// json.Marshal error path does).
 function joinValue(v: any): string {
   if (null == v) return ''
   const t = typeof v
   if ('string' === t) return v
   if ('number' === t || 'boolean' === t) return '' + v
   try {
-    const s = JSON.stringify(v)
+    const s = JSON.stringify(canonicalize(v))
     return null == s ? '' : s
   }
   catch (_e) {

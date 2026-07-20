@@ -136,8 +136,9 @@ Full signatures, parameters, edge cases, and examples: [TypeScript API](docs/api
   Both walk maps and arrays only; JS-style indexing into a string (or `.length`)
   is TS-only.
 - **`joins` element rendering**: strings as-is, numbers/booleans via `String`,
-  `null`/`undefined` → `''`, and **objects/arrays as JSON** (both languages) —
-  not JS's `[object Object]`. Go renders `float64` to match JS `String()`
+  `null`/`undefined` → `''`, and **objects/arrays as JSON with sorted keys**
+  (both languages; nested non-finite → `null`) — not JS's `[object Object]`. Go
+  renders `float64` to match JS `String()`
   (`Infinity`/`-Infinity`/`NaN` spelled out, `-0` → `0`) for all realistic
   magnitudes; only JS's exponential range (`>=1e21`, `<1e-6`) differs.
 - **Malformed input**: both implementations are defensive and agree — `entity`

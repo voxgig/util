@@ -17,7 +17,8 @@ import (
 // jsTruthy reports whether v is truthy under JavaScript rules. The falsy values
 // are false, 0 (and -0), "", nil (null/undefined) and NaN; everything else —
 // including any map or slice — is truthy. Used where the canonical TS relies on
-// `if (value)` rather than a presence check.
+// `if (value)` rather than a presence check. Every Go numeric type (not just the
+// float64 that JSON decodes to) is handled, so a zero of any width is falsy.
 func jsTruthy(v any) bool {
 	switch x := v.(type) {
 	case nil:
@@ -26,14 +27,16 @@ func jsTruthy(v any) bool {
 		return x
 	case string:
 		return x != ""
-	case float64:
-		return x != 0 && !math.IsNaN(x)
-	case float32:
-		return x != 0 && !math.IsNaN(float64(x))
-	case int:
-		return x != 0
-	case int64:
-		return x != 0
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return rv.Int() != 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return rv.Uint() != 0
+	case reflect.Float32, reflect.Float64:
+		f := rv.Float()
+		return f != 0 && !math.IsNaN(f)
 	default:
 		return true
 	}
@@ -257,8 +260,23 @@ func toString(v any) string {
 	case bool:
 		return strconv.FormatBool(val)
 	default:
-		b, _ := json.Marshal(val)
-		return string(b)
+		// Objects/arrays render as JSON (json.Marshal sorts keys, matching the
+		// canonicalised TS output). On a marshal error, distinguish a cycle
+		// (TS's JSON.stringify throws -> '') from a non-finite value nested in
+		// the container (TS's JSON.stringify emits null): retry with those
+		// nulled. The value is acyclic on that retry, so no cycle tracking is
+		// needed.
+		b, err := json.Marshal(val)
+		if err == nil {
+			return string(b)
+		}
+		if strings.Contains(err.Error(), "cycle") {
+			return ""
+		}
+		if nb, nerr := json.Marshal(nullifyNonFinite(val)); nerr == nil {
+			return string(nb)
+		}
+		return ""
 	}
 }
 
@@ -491,7 +509,10 @@ func orderInclude(items []map[string]any, spec *OrderSpec) []map[string]any {
 
 // orderTokenSep matches the JS split pattern /\s*,\s*/ used by order: commas
 // with any surrounding whitespace. Splitting with it (and keeping empty tokens)
-// reproduces the canonical TS token list exactly.
+// reproduces the canonical TS token list. Note Go's RE2 \s is ASCII-only whereas
+// JS's \s also matches Unicode whitespace (e.g. a non-breaking space); a token
+// spec padded with such characters is a deliberate, documented divergence — sort
+// keys are plain identifiers in practice.
 var orderTokenSep = regexp.MustCompile(`\s*,\s*`)
 
 func splitTokens(s string) []string {
@@ -584,7 +605,10 @@ func Entity(model map[string]any) map[string]any {
 // Stringify converts a value to a JSON string, first removing any circular
 // references (mirrors the canonical TS stringify, which wraps decircular).
 func Stringify(val any) string {
-	b, err := json.Marshal(Decircular(val))
+	// Decircular de-cycles (leaving non-finite floats intact, like TS decircular);
+	// nullifyNonFinite then maps them to nil so json.Marshal emits null instead of
+	// erroring, matching JSON.stringify.
+	b, err := json.Marshal(nullifyNonFinite(Decircular(val)))
 	if err != nil {
 		return ""
 	}
@@ -595,9 +619,9 @@ func Stringify(val any) string {
 // "[Circular *path]" strings, where path is the dotted path to the first
 // occurrence. It mirrors the canonical TS decircular, detecting cycles by
 // object identity on the current traversal path. Only map[string]any and []any
-// are recursed into; non-finite floats (NaN, ±Inf) normalise to nil so that
-// Stringify emits null (as JSON.stringify does); all other values are returned
-// unchanged.
+// are recursed into; all other values (including non-finite floats) are returned
+// unchanged — matching the TS decircular, which leaves NaN/±Inf intact and lets
+// JSON.stringify null them at serialisation time.
 func Decircular(val any) any {
 	seen := make(map[uintptr][]string)
 	var path []string
@@ -657,24 +681,45 @@ func decircularWalk(val any, seen map[uintptr][]string, path *[]string) any {
 		delete(seen, ptr)
 		return result
 
+	default:
+		return val
+	}
+}
+
+// nullifyNonFinite deep-copies a value, replacing non-finite floats (NaN, ±Inf)
+// with nil so a subsequent json.Marshal succeeds and emits null, matching
+// JSON.stringify. It is applied only on serialisation paths (Stringify, and the
+// object/array case of joins' toString) — never in Decircular, whose deep-copy
+// semantics must preserve non-finite values as the canonical TS decircular does.
+// Callers pass acyclic input (Stringify de-cycles first; toString only reaches
+// it when json.Marshal did not report a cycle), so no cycle tracking is needed.
+func nullifyNonFinite(v any) any {
+	switch x := v.(type) {
 	case float64:
-		// JSON has no NaN/Infinity; JS JSON.stringify serialises them as null, so
-		// normalise non-finite floats to nil here (Go's json.Marshal would error
-		// and Stringify would otherwise discard the whole payload).
-		if math.IsNaN(v) || math.IsInf(v, 0) {
+		if math.IsNaN(x) || math.IsInf(x, 0) {
 			return nil
 		}
-		return v
-
+		return x
 	case float32:
-		f := float64(v)
+		f := float64(x)
 		if math.IsNaN(f) || math.IsInf(f, 0) {
 			return nil
 		}
-		return v
-
+		return x
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			out[k] = nullifyNonFinite(e)
+		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = nullifyNonFinite(e)
+		}
+		return out
 	default:
-		return val
+		return v
 	}
 }
 
