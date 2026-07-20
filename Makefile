@@ -1,4 +1,4 @@
-.PHONY: all build test clean build-ts build-go test-ts test-go clean-ts clean-go publish publish-npm publish-go tags-npm tags-go reset
+.PHONY: all build test clean build-ts build-go test-ts test-go clean-ts clean-go publish publish-npm publish-go publish-dry publish-npm-dry publish-go-dry tags-npm tags-go reset
 
 all: build test
 
@@ -60,6 +60,28 @@ publish-go: test-go
 		git tag go/v$$V && \
 		git push origin main go/v$$V && \
 		if command -v gh >/dev/null 2>&1; then gh release create go/v$$V --title "go/v$$V" --notes "Go module release v$$V"; fi
+
+# Dry-run: build + test, run `npm publish --dry-run`, and print the git/tag/gh
+# commands that publish would run. Does not modify files, commit, tag, or push.
+publish-dry: publish-npm-dry publish-go-dry
+
+publish-npm-dry: build-ts test-ts
+	@V=$$(node -p "const v=require('./ts/package.json').version.split('.'); v[2]=+v[2]+1; v.join('.')"); \
+		echo "[dry-run] Would bump ts/package.json to v$$V"; \
+		echo "[dry-run] Would git commit -m 'ts: v$$V'"; \
+		echo "[dry-run] Would git tag v$$V"; \
+		echo "[dry-run] Would git push origin main v$$V"; \
+		echo "[dry-run] Tarball contents (npm pack --dry-run):"; \
+		(cd ts && npm pack --dry-run); \
+		echo "[dry-run] Would gh release create v$$V"
+
+publish-go-dry: test-go
+	@LATEST=$$(git tag -l 'go/v*' --sort=-version:refname | head -1 | sed 's|^go/v||'); \
+		V=$${V:-$$(echo $$LATEST | awk -F. '{printf "%d.%d.%d", $$1, $$2, $$3+1}')}; \
+		test -n "$$V" || (echo "No existing go/v* tag; use: make publish-go-dry V=x.y.z" && exit 1); \
+		echo "[dry-run] Would git tag go/v$$V (previous go/v$$LATEST)"; \
+		echo "[dry-run] Would git push origin main go/v$$V"; \
+		echo "[dry-run] Would gh release create go/v$$V"
 
 reset:
 	cd ts && npm run reset
