@@ -1,3 +1,5 @@
+# Dual-language build: a TypeScript matrix and a Go job.
+
 name: CI
 
 on:
@@ -7,21 +9,38 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-
+  build-ts:
+    name: TypeScript
+    timeout-minutes: 6
     strategy:
+      fail-fast: false
       matrix:
         node-version: [24, latest]
-
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ts
     steps:
       - uses: actions/checkout@v4
-
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-
       - run: npm install
       - run: npm run build
       - run: npm test
+
+  build-go:
+    name: Go
+    timeout-minutes: 6
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./...
