@@ -31,12 +31,26 @@ Concretely, a behavioural change moves in one direction:
 3. Rebuild the committed TypeScript output (`ts/dist/`, `ts/dist-test/`).
 4. Run both suites.
 
-The tests are the contract. For every shared behaviour there is a TypeScript test
-that defines it and a Go test that asserts the port reproduces it, often with the
-same inputs and expected outputs. When a subtle divergence is discovered, the fix
-is accompanied by a test on both sides so it cannot silently regress — the
-trailing-separator behaviour of `pinify`, the numeric formatting in `joins`, and
-the natural-sort padding in `order` all arrived this way.
+The tests are the contract, and for the portable data utilities that contract is
+**shared**: the fixtures live once, in top-level [`test/`](../test) as
+tab-separated `*.tsv` files (one per function), and *both* suites load and run
+them. Each row is `name`, `args` (a JSON array of the logical arguments), and
+`expected` (the canonical result). A tiny per-language adapter maps the argument
+list to a real call — `joins(...args)` in TypeScript, `Joins(arr, seps...)` in
+Go — and the result is compared as canonical JSON (object keys sorted), so a
+structural mismatch fails one of the two suites. Because the *same* inputs and
+expected outputs drive both implementations, a behavioural drift cannot pass CI.
+
+To add or change a shared behaviour, edit the relevant `test/<fn>.tsv` (no code
+generator is involved — the files are the source of truth) and make both suites
+pass. Cases that cannot be expressed as a shared fixture — a `dive` mapper
+(a function argument), a cycle (not representable in JSON), `stringify(undefined)`
+(no JSON value), the documented divergences below, and the Node-only logging
+helpers — stay as per-language tests alongside the shared runner. When a subtle
+divergence is discovered, the fix is accompanied by a fixture (or a per-language
+test) so it cannot silently regress — the trailing-separator behaviour of
+`pinify`, the numeric formatting in `joins`, and the natural-sort padding in
+`order` all arrived this way.
 
 ## Why the committed build output
 
@@ -60,12 +74,15 @@ randomises iteration order on purpose. Left unaddressed this would make Go outpu
 vary from run to run, so wherever the order of a result is observable, both
 implementations impose a deterministic order:
 
-- `dive` visits keys in **sorted order** in both languages. Its output is
-  therefore deterministic *and* identical across TypeScript and Go — and so are
-  the things built on it, `DiveMap` and `Entity` (whose key-collision resolution
-  is now stable too). This is why `dive` no longer preserves insertion order:
-  determinism across the two ports was judged more valuable, and its consumers
-  (`entity`) don't depend on order.
+- `dive` visits **object** keys in sorted order in both languages, and **array**
+  indices in numeric order (`0,1,…,10,11` — the canonical TS was fixed to use
+  numeric order rather than the lexicographic `0,1,10,11,2` that a plain string
+  sort of the index keys would give, so the Go port reproduces it exactly). Its
+  output is therefore deterministic *and* identical across TypeScript and Go —
+  and so are the things built on it, `DiveMap` and `Entity` (whose key-collision
+  resolution is now stable too). This is why `dive` no longer preserves
+  insertion order: determinism across the two ports was judged more valuable,
+  and its consumers (`entity`) don't depend on order.
 - `Stringify` is deterministic on both sides — Go's `encoding/json` sorts object
   keys; TypeScript serialises in insertion order. The *text* can differ in key
   order, but each is stable.
@@ -83,35 +100,56 @@ no-sort case meaning "the order you gave me".
 
 ### Number formatting
 
-`joins` renders elements the way JavaScript's `Array.join` does. For Go to match
+`joins` renders elements the way JavaScript's `String()` does. For Go to match
 `String(n)` for a `float64`, it formats with the shortest fixed-point form
-(`strconv.FormatFloat(v, 'f', -1, 64)`). This agrees with JavaScript across every
-realistic magnitude — whole numbers print without a trailing `.0`, and large
-integers keep their digits instead of switching to exponent form too early. The
-only divergence is at the extremes where JavaScript itself switches to
-exponential notation (`>= 1e21` or `< 1e-6`), which never occur in the pin and
-path strings `joins` is built for.
+(`strconv.FormatFloat(v, 'f', -1, 64)`), with small special cases so that
+`Infinity`/`-Infinity`/`NaN` are spelled out and `-0` prints as `0`. This agrees
+with JavaScript across every realistic magnitude — whole numbers print without a
+trailing `.0`, and large integers keep their digits instead of switching to
+exponent form too early. The only divergence is at the extremes where JavaScript
+itself switches to exponential notation (`>= 1e21` or `< 1e-6`), which never
+occur in the pin and path strings `joins` is built for.
 
-### Text length: UTF-16 versus runes
+### Rendering objects in `joins`
+
+`joins` also has to decide what to do with a non-primitive element. JavaScript's
+`Array.join` would render a plain object as the useless `[object Object]` and an
+array by recursively comma-joining it; the Go port always produced JSON
+(`json.Marshal`). Here the Go behaviour was judged the sensible one, so the
+canonical TypeScript was brought to match it: objects and arrays are rendered
+with `JSON.stringify`, and a value that cannot be serialised yields `''`. This is
+the one place where a divergence was resolved by changing the canonical side
+rather than the port. To make the match exact, the TypeScript canonicalises the
+object first — sorting keys so the output equals Go's key-sorted `json.Marshal`,
+and (like `JSON.stringify`) rendering any nested non-finite number as `null`,
+which the Go `toString` also does before marshalling.
+
+### Text length: UTF-16 code units
 
 The `human$` sort left-pads each title to the longest title's length before
 comparing. JavaScript's `String.length` counts UTF-16 code units; Go's `len` on a
-string counts bytes. Measuring bytes would pad multibyte titles incorrectly and
-change their sort position, so the Go port counts runes instead
-(`utf8.RuneCountInString`). Runes equal UTF-16 units for all
-Basic-Multilingual-Plane text — every realistic title — so the two agree; they
-would only differ for astral characters such as emoji.
+string counts bytes. Measuring bytes would pad multibyte titles incorrectly, so
+the Go port counts UTF-16 code units directly (`utf16Len`: one per rune, two per
+rune above `U+FFFF`). This matches `String.length` exactly — including astral
+characters such as emoji — so the padded `title$` values agree in both languages.
+(The *comparison order* of astral titles can still differ, because JS compares
+UTF-16 code units while Go compares UTF-8 bytes; this only affects code points
+`>= U+10000` and never the BMP titles used in practice.)
 
 ### Malformed input is handled defensively
 
 Both implementations are deliberately forgiving of structurally invalid input
-rather than throwing or panicking. `entity` skips any entry that doesn't resolve
-to a `base/name` pair or that lacks a `field` map (a `$`-shaped entry that
-produces a short path, for instance, is dropped instead of crashing), and the
-`human$`/`alpha$` sorts treat a missing `title` as empty. The two ports take the
-same defensive path, so they agree on malformed input as well as well-formed
-input. (`entity` and `order` also avoid mutating the caller's input — they copy
-before adding derived fields such as `key` and `title$`.)
+rather than throwing or panicking, and they agree on the result. `entity` skips
+any entry that doesn't resolve to a `base/name` pair, whose `ent`/`field` is not
+a plain object (an array is skipped, not iterated by index), or whose field value
+is `null`/primitive — where the TypeScript once threw a `TypeError` on a `null`
+field value, it now skips it like the port. A field with a `valid` string but no
+`kind` yields `.valid` (not the literal `undefined.valid`), a falsy `valid` is
+ignored, and a field carrying neither is omitted. The `human$`/`alpha$` sorts
+treat a missing or non-string `title` as its `String()` form (`''` when absent).
+Missing `main`/`ent` yields `{}` in both. (`entity` and `order` also avoid
+mutating the caller's input — they copy before adding derived fields such as
+`key` and `title$`.)
 
 ### Overloads become separate functions
 
@@ -122,6 +160,34 @@ signatures: `camelify` splits into `Camelify` and `CamelifySlice`, `get` into
 itself adapts too — where TypeScript signals "omit this entry" by returning a
 `null` key, the Go `DiveMapper` returns an explicit `ok bool`, which is clearer
 in a typed setting and behaves the same.
+
+### Divergences deliberately left in place
+
+A handful of divergences are rooted so deeply in one language's runtime that
+matching them in the other would mean importing a heavyweight dependency or
+re-implementing an intricate algorithm — for behaviour that cannot arise from the
+JSON-shaped data this library actually handles (identifiers, pins, paths, model
+trees). These are left as conscious, documented differences and pinned by
+per-language tests rather than shared fixtures:
+
+- **`camelify` first-character casing.** JS `toUpperCase` applies full Unicode
+  case mapping, expanding `ß` → `SS` and the `ﬀ` ligature → `FF`; Go's
+  `unicode.ToUpper` is a simple 1:1 rune mapping and leaves them unchanged.
+  (Conversely, JS fails to uppercase an astral first character because `p[0]` is
+  a lone surrogate.) Matching would need `golang.org/x/text`.
+- **`get` into scalars.** JS bracket access indexes into a string
+  (`get({a:'hi'},'a.0')` → `'h'`) and reads `.length`; Go's `Get` treats a
+  string or number as a terminal leaf and returns `nil`. `get` is contracted to
+  walk maps and arrays, not to emulate JS property access.
+- **`joins` at numeric extremes.** Beyond `>= 1e21` / `< 1e-6` JS switches to
+  exponential notation; Go keeps fixed-point. And the `2^j` separator arithmetic
+  relies on JS's 32-bit shift wrap-around, so it only differs past 32 separators
+  (versus the one to three joins actually uses).
+- **`order` non-string keys/titles at the extremes**, **`entity` with a
+  non-object `valid`/`kind`** (JS object-spread and `String()` coercion have no
+  clean Go analogue), and **`stringify`/`decircular` of `Error` values** (a
+  JS-object notion with no Go counterpart) are likewise documented rather than
+  reproduced.
 
 ## The reasoning behind a few functions
 

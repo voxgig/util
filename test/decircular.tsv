@@ -1,0 +1,8 @@
+name	args	expected
+object	[{"a": 1, "b": {"c": 2}}]	{"a": 1, "b": {"c": 2}}
+null	[null]	null
+number	[42]	42
+string	["hello"]	"hello"
+array	[[1, 2, {"a": 3}]]	[1, 2, {"a": 3}]
+deep	[{"a": {"b": {"c": {"d": {"e": 5}}}}}]	{"a": {"b": {"c": {"d": {"e": 5}}}}}
+empty-containers	[{"m": {}, "s": [], "n": 1}]	{"m": {}, "s": [], "n": 1}

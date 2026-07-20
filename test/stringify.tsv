@@ -1,0 +1,9 @@
+name	args	expected
+object-single	[{"a": 1}]	"{\"a\":1}"
+object-sorted	[{"a": 1, "b": "hi"}]	"{\"a\":1,\"b\":\"hi\"}"
+nested	[{"a": 1, "b": {"c": 2}}]	"{\"a\":1,\"b\":{\"c\":2}}"
+null	[null]	"null"
+number	[42]	"42"
+string	["hello"]	"\"hello\""
+bool	[true]	"true"
+array	[[1, 2, 3]]	"[1,2,3]"

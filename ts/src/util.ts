@@ -98,16 +98,28 @@ function prettyPino(name: string, opts: {
 
 
 function hasOwnKeys(obj: any): boolean {
-  for (const _ in obj) return true
+  // Own enumerable keys only, matching the Object.keys() iteration in
+  // diveInternal (a for..in would also see inherited keys, which would make a
+  // node with only inherited keys recurse yet contribute nothing).
+  for (const k in obj) if (Object.prototype.hasOwnProperty.call(obj, k)) return true
   return false
 }
 
 
 function diveInternal(node: any, d: number, prefix: string[], items: any[]): void {
   const obj = node || {}
-  // Iterate keys in sorted order for deterministic, cross-language-stable output.
-  for (const key of Object.keys(obj).sort()) {
-    const child = obj[key]
+  // Object keys are visited in sorted order for deterministic, cross-language
+  // output; array indices are visited in numeric order (0,1,…,10,11 — not the
+  // lexicographic 0,1,10,11,2 that Object.keys(arr).sort() would give), so the
+  // Go port can reproduce the exact same order.
+  // Object.keys already yields array indices in ascending numeric order and
+  // skips holes in a sparse array; object keys are sorted for a deterministic,
+  // cross-language-stable order.
+  const keys: string[] = Array.isArray(obj) ?
+    Object.keys(obj) :
+    Object.keys(obj).sort()
+  for (const key of keys) {
+    const child = (obj as any)[key]
     if ('$' === key) {
       items.push([prefix.slice(), child])
     }
@@ -149,6 +161,48 @@ function dive(node: any, depth?: number | DiveMapper, mapper?: DiveMapper): any 
 }
 
 
+// Recursively sort object keys so an object/array element renders identically to
+// the Go port (whose json.Marshal sorts map keys). Cycle-aware: a revisited node
+// is returned as-is, so JSON.stringify still throws on a genuine cycle. A DAG
+// (shared non-cyclic sibling) is expanded each time, matching JSON.stringify.
+function canonicalize(v: any, seen: WeakSet<any> = new WeakSet()): any {
+  if (null == v || 'object' !== typeof v) {
+    return v
+  }
+  if (seen.has(v)) {
+    return v
+  }
+  seen.add(v)
+  const out = Array.isArray(v) ?
+    v.map((e: any) => canonicalize(e, seen)) :
+    Object.keys(v).sort().reduce((a: any, k: string) => (a[k] = canonicalize(v[k], seen), a), {})
+  seen.delete(v)
+  return out
+}
+
+
+// Render a single joins element to a string. Primitives coerce as JS would
+// (numbers/booleans via String, null/undefined to ''), while objects and arrays
+// serialise to JSON with sorted keys — matching the Go port's toString
+// (json.Marshal), rather than JS's default '[object Object]' / recursive
+// comma-join. Non-finite numbers serialise as null (JSON.stringify). A value
+// that cannot be serialised (a cycle, a function) yields '' (as Go's
+// json.Marshal error path does).
+function joinValue(v: any): string {
+  if (null == v) return ''
+  const t = typeof v
+  if ('string' === t) return v
+  if ('number' === t || 'boolean' === t) return '' + v
+  try {
+    const s = JSON.stringify(canonicalize(v))
+    return null == s ? '' : s
+  }
+  catch (_e) {
+    return ''
+  }
+}
+
+
 /*
  * , => a,b
  * :, => a:1,b:2
@@ -158,7 +212,7 @@ function joins(arr: any[], ...seps: string[]) {
   arr = arr || []
   let sa = []
   for (let i = 0; i < arr.length; i++) {
-    sa.push(arr[i])
+    sa.push(joinValue(arr[i]))
     if (i < arr.length - 1) {
       for (let j = seps.length - 1; -1 < j; j--) {
         if (0 === (i + 1) % (1 << j)) {
@@ -223,8 +277,10 @@ function entity(model: any) {
       continue
     }
 
+    // A field map must be a plain object; an array (or missing/non-object) is
+    // skipped rather than iterated by index.
     let field = ent.field
-    if (null == field || 'object' !== typeof field) {
+    if (null == field || 'object' !== typeof field || Array.isArray(field)) {
       continue
     }
 
@@ -235,17 +291,28 @@ function entity(model: any) {
       let name = n[0]
       let fld = n[1] as any
 
+      // Skip a null/primitive field value rather than throwing on fld.kind.
+      if (null == fld || 'object' !== typeof fld) {
+        return
+      }
+
       let fv = fld.kind
       if (fld.valid) {
         let vt = typeof fld.valid
         if ('string' === vt) {
-          fv += '.' + fld.valid
+          // A missing kind must not leak the literal string 'undefined' into
+          // the validation ('undefined.Foo'); treat a null/undefined kind as ''.
+          fv = (null == fld.kind ? '' : fld.kind) + '.' + fld.valid
         }
         else {
           fv = fld.valid
         }
       }
-      valid[name] = fv
+      // An undefined derived value (no kind and no usable valid) is omitted, so
+      // the JSON output matches the Go port (which stores no key in that case).
+      if (undefined !== fv) {
+        valid[name] = fv
+      }
     })
 
     entMap[path[0] + '/' + path[1]] = {

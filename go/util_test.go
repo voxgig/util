@@ -4,446 +4,363 @@ package util
 
 import (
 	"encoding/json"
-	"reflect"
+	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestHappy(t *testing.T) {
-	// Verify functions exist by calling them with minimal args
-	_ = Camelify("")
-	_ = Dive(nil)
-	_ = Get(nil, "")
-	_ = Joins(nil)
-	_ = Pinify(nil)
-	_ = Entity(nil)
+// ---------------------------------------------------------------------------
+// Shared cross-language parity specs (top-level test/*.tsv).
+//
+// The same fixtures drive the TypeScript suite. Each row is (name, args,
+// expected); the adapter maps the logical argument list to a real Go call, and
+// results are compared as canonical JSON (map keys sorted by encoding/json), so
+// a behavioural drift between the two implementations fails one of them.
+// ---------------------------------------------------------------------------
+
+type specRow struct {
+	name     string
+	args     []any
+	expected any
 }
 
-func TestCamelify(t *testing.T) {
-	result := Camelify("foo-bar")
-	if result != "FooBar" {
-		t.Errorf("Camelify('foo-bar') = %q, want %q", result, "FooBar")
+func loadSpec(t *testing.T, name string) []specRow {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "test", name+".tsv"))
+	if err != nil {
+		t.Fatalf("read spec %s: %v", name, err)
 	}
-}
-
-func TestCamelifySlice(t *testing.T) {
-	result := CamelifySlice([]string{"foo", "bar"})
-	if result != "FooBar" {
-		t.Errorf("CamelifySlice(['foo','bar']) = %q, want %q", result, "FooBar")
-	}
-}
-
-func TestDive(t *testing.T) {
-	input := map[string]any{
-		"color": map[string]any{
-			"red":   map[string]any{"x": 1},
-			"green": map[string]any{"x": 2},
-		},
-		"planet": map[string]any{
-			"venus":   map[string]any{"y": map[string]any{"z": 4}},
-			"mercury": map[string]any{"y": map[string]any{"z": 3}},
-		},
-	}
-
-	result := Dive(input)
-
-	// Entries come back in sorted key order (deterministic), matching the
-	// canonical TS exactly: color.green, color.red, planet.mercury, planet.venus.
-	wantPaths := [][]string{
-		{"color", "green"}, {"color", "red"},
-		{"planet", "mercury"}, {"planet", "venus"},
-	}
-	wantVals := []any{
-		map[string]any{"x": 2},
-		map[string]any{"x": 1},
-		map[string]any{"y": map[string]any{"z": 3}},
-		map[string]any{"y": map[string]any{"z": 4}},
-	}
-	if len(result) != len(wantPaths) {
-		t.Fatalf("Dive returned %d entries, want %d", len(result), len(wantPaths))
-	}
-	for i := range wantPaths {
-		if !reflect.DeepEqual(result[i].Path, wantPaths[i]) {
-			t.Errorf("Dive entry %d path = %v, want %v", i, result[i].Path, wantPaths[i])
+	var rows []specRow
+	for i, line := range strings.Split(string(data), "\n") {
+		if i == 0 || strings.TrimSpace(line) == "" || strings.HasPrefix(line, "#") {
+			continue // line 0 is the header
 		}
-		if !reflect.DeepEqual(result[i].Value, wantVals[i]) {
-			t.Errorf("Dive entry %d value = %v, want %v", i, result[i].Value, wantVals[i])
+		cols := strings.SplitN(line, "\t", 3)
+		var args []any
+		var exp any
+		if err := json.Unmarshal([]byte(cols[1]), &args); err != nil {
+			t.Fatalf("%s/%s args: %v", name, cols[0], err)
 		}
-	}
-}
-
-func TestGet(t *testing.T) {
-	root := map[string]any{
-		"a": map[string]any{
-			"b": 1,
-		},
-	}
-	result := Get(root, "a.b")
-	if result != 1 {
-		t.Errorf("Get(root, 'a.b') = %v, want 1", result)
-	}
-}
-
-func TestGetNil(t *testing.T) {
-	result := Get(nil, "a.b")
-	if result != nil {
-		t.Errorf("Get(nil, 'a.b') = %v, want nil", result)
-	}
-}
-
-func TestJoins(t *testing.T) {
-	arr := []any{"a", 1, "b", 2, "c", 3, "d", 4, "e", 5, "f", 6}
-	result := Joins(arr, ":", ",", "/")
-	expected := "a:1,b:2/c:3,d:4/e:5,f:6"
-	if result != expected {
-		t.Errorf("Joins() = %q, want %q", result, expected)
-	}
-}
-
-func TestPinify(t *testing.T) {
-	result := Pinify([]string{"a", "b", "c", "d"})
-	if result != "a:b,c:d" {
-		t.Errorf("Pinify(['a','b','c','d']) = %q, want %q", result, "a:b,c:d")
-	}
-}
-
-func TestEntity(t *testing.T) {
-	model := map[string]any{
-		"main": map[string]any{
-			"ent": map[string]any{
-				"qaz": map[string]any{
-					"zed": map[string]any{
-						"valid": map[string]any{
-							"$$": "Open",
-						},
-						"field": map[string]any{
-							"foo": map[string]any{
-								"valid": map[string]any{
-									"a": "Number",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	result := Entity(model)
-
-	expected := map[string]any{
-		"qaz/zed": map[string]any{
-			"valid_json": map[string]any{
-				"$$":  "Open",
-				"foo": map[string]any{"a": "Number"},
-			},
-		},
-	}
-
-	if !reflect.DeepEqual(result, expected) {
-		t.Errorf("Entity() = %v, want %v", toJSON(result), toJSON(expected))
-	}
-}
-
-func TestStringify(t *testing.T) {
-	result := Stringify(map[string]any{"a": 1, "b": "hello"})
-	// JSON key order may vary in Go, parse and compare
-	var parsed map[string]any
-	json.Unmarshal([]byte(result), &parsed)
-
-	if parsed["a"] != float64(1) || parsed["b"] != "hello" {
-		t.Errorf("Stringify({a:1,b:'hello'}) = %q", result)
-	}
-
-	if Stringify(nil) != "null" {
-		t.Errorf("Stringify(nil) = %q, want 'null'", Stringify(nil))
-	}
-
-	if Stringify(42) != "42" {
-		t.Errorf("Stringify(42) = %q, want '42'", Stringify(42))
-	}
-
-	// Circular references are de-cycled before serialization (matches TS).
-	m := map[string]any{"a": 1}
-	m["self"] = m
-	if got := Stringify(m); got != `{"a":1,"self":"[Circular *]"}` {
-		t.Errorf("Stringify(cyclic) = %q, want %q", got, `{"a":1,"self":"[Circular *]"}`)
-	}
-}
-
-func TestDecircular(t *testing.T) {
-	// Simple non-circular object passes through
-	input := map[string]any{"a": 1, "b": map[string]any{"c": 2}}
-	result := Decircular(input)
-	expected := map[string]any{"a": 1, "b": map[string]any{"c": 2}}
-	if !reflect.DeepEqual(result, expected) {
-		t.Errorf("Decircular simple = %v, want %v", result, expected)
-	}
-
-	// Handles nil
-	if Decircular(nil) != nil {
-		t.Errorf("Decircular(nil) = %v, want nil", Decircular(nil))
-	}
-
-	// Handles primitives
-	if Decircular(42) != 42 {
-		t.Errorf("Decircular(42) = %v, want 42", Decircular(42))
-	}
-	if Decircular("hello") != "hello" {
-		t.Errorf("Decircular('hello') = %v, want 'hello'", Decircular("hello"))
-	}
-
-	// Handles arrays
-	arrInput := []any{1, 2, map[string]any{"a": 3}}
-	arrResult := Decircular(arrInput)
-	arrExpected := []any{1, 2, map[string]any{"a": 3}}
-	if !reflect.DeepEqual(arrResult, arrExpected) {
-		t.Errorf("Decircular array = %v, want %v", arrResult, arrExpected)
-	}
-
-	// Deeply nested non-circular object
-	deep := map[string]any{
-		"a": map[string]any{
-			"b": map[string]any{
-				"c": map[string]any{
-					"d": map[string]any{
-						"e": 5,
-					},
-				},
-			},
-		},
-	}
-	deepResult := Decircular(deep)
-	if !reflect.DeepEqual(deepResult, deep) {
-		t.Errorf("Decircular deep = %v, want %v", deepResult, deep)
-	}
-}
-
-func TestOrder(t *testing.T) {
-	// Empty
-	result := Order(map[string]map[string]any{}, nil)
-	if len(result) != 0 {
-		t.Errorf("Order({}, nil) returned %d items, want 0", len(result))
-	}
-
-	items := map[string]map[string]any{
-		"code": {"title": "Coding"},
-		"tech": {"title": "Technology"},
-		"devr": {"title": "Developer Relations"},
-	}
-
-	// No spec
-	result = Order(items, nil)
-	assertOrderKeys(t, result, []string{"code", "devr", "tech"})
-
-	// Exclude
-	result = Order(items, &OrderSpec{Exclude: "code,tech"})
-	assertOrderKeys(t, result, []string{"devr"})
-
-	// Include
-	result = Order(items, &OrderSpec{Include: "code,tech"})
-	assertOrderKeys(t, result, []string{"code", "tech"})
-
-	// Exclude wins over include
-	result = Order(items, &OrderSpec{Exclude: "code", Include: "code,tech"})
-	assertOrderKeys(t, result, []string{"tech"})
-
-	// Alpha sort
-	result = Order(items, &OrderSpec{Sort: "alpha$"})
-	assertOrderKeys(t, result, []string{"code", "devr", "tech"})
-	assertOrderTitles(t, result, []string{"Coding", "Developer Relations", "Technology"})
-
-	// Explicit sort
-	result = Order(items, &OrderSpec{Sort: "tech,code"})
-	assertOrderKeys(t, result, []string{"tech", "code"})
-
-	// Mixed sort with alpha$
-	result = Order(items, &OrderSpec{Sort: "tech,alpha$"})
-	assertOrderKeys(t, result, []string{"tech", "code", "devr"})
-
-	// Unknown sort keys are dropped (no nil holes).
-	result = Order(items, &OrderSpec{Sort: "tech,zzz,code"})
-	assertOrderKeys(t, result, []string{"tech", "code"})
-}
-
-func TestOrderHumanSort(t *testing.T) {
-	nums := map[string]map[string]any{
-		"1":    {"title": "1"},
-		"10":   {"title": "10"},
-		"2":    {"title": "2"},
-		"tech": {"title": "Technology"},
-	}
-
-	// Alpha sort
-	result := Order(nums, &OrderSpec{Sort: "alpha$"})
-	assertOrderKeys(t, result, []string{"1", "10", "2", "tech"})
-
-	// Human sort
-	result = Order(nums, &OrderSpec{Sort: "human$"})
-	assertOrderKeys(t, result, []string{"1", "2", "10", "tech"})
-
-	// title$ padding must match the canonical TS output.
-	wantTitleDollar := map[string]string{
-		"1":    "00000000001",
-		"2":    "00000000002",
-		"10":   "00000000010",
-		"tech": "0Technology",
-	}
-	for _, item := range result {
-		k := item["key"].(string)
-		if item["title$"] != wantTitleDollar[k] {
-			t.Errorf("human$ title$ for %q = %v, want %q", k, item["title$"], wantTitleDollar[k])
+		if err := json.Unmarshal([]byte(cols[2]), &exp); err != nil {
+			t.Fatalf("%s/%s expected: %v", name, cols[0], err)
 		}
+		rows = append(rows, specRow{cols[0], args, exp})
 	}
+	return rows
 }
 
-func TestOrderHumanSortUnicode(t *testing.T) {
-	// Padding length is measured in runes (UTF-16 units for BMP), so a
-	// multibyte title pads/sorts the same as the canonical TS output.
-	u := map[string]map[string]any{
-		"a": {"title": "é"},
-		"b": {"title": "10"},
-	}
-	result := Order(u, &OrderSpec{Sort: "human$"})
-	assertOrderKeys(t, result, []string{"a", "b"})
+// canon renders v as JSON; encoding/json sorts object keys, so structurally
+// equal values (regardless of key order) produce the same string.
+func canon(v any) string {
+	b, _ := json.Marshal(v)
+	return string(b)
+}
 
-	want := map[string]string{"a": "00é", "b": "010"}
-	for _, item := range result {
-		k := item["key"].(string)
-		if item["title$"] != want[k] {
-			t.Errorf("human$ title$ for %q = %v, want %q", k, item["title$"], want[k])
+func str(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+func toStrSlice(v any) []string {
+	raw, _ := v.([]any)
+	out := make([]string, len(raw))
+	for i, e := range raw {
+		out[i], _ = e.(string)
+	}
+	return out
+}
+
+var adapters = map[string]func([]any) any{
+	"camelify": func(a []any) any {
+		switch v := a[0].(type) {
+		case string:
+			return Camelify(v)
+		case []any:
+			return CamelifySlice(toStrSlice(v))
 		}
+		return nil
+	},
+	"dive": func(a []any) any {
+		node, _ := a[0].(map[string]any)
+		var entries []DiveEntry
+		if len(a) > 1 {
+			entries = Dive(node, int(a[1].(float64)))
+		} else {
+			entries = Dive(node)
+		}
+		// Match the TS array-of-[path, value] shape for comparison.
+		out := make([]any, len(entries))
+		for i, e := range entries {
+			p := make([]any, len(e.Path))
+			for j, s := range e.Path {
+				p[j] = s
+			}
+			out[i] = []any{p, e.Value}
+		}
+		return out
+	},
+	"get": func(a []any) any {
+		if s, ok := a[1].(string); ok {
+			return Get(a[0], s)
+		}
+		return GetPath(a[0], toStrSlice(a[1]))
+	},
+	"joins": func(a []any) any {
+		arr, _ := a[0].([]any)
+		seps := make([]string, 0, len(a)-1)
+		for _, s := range a[1:] {
+			seps = append(seps, s.(string))
+		}
+		return Joins(arr, seps...)
+	},
+	"pinify": func(a []any) any {
+		return Pinify(toStrSlice(a[0]))
+	},
+	"order": func(a []any) any {
+		rawMap, _ := a[0].(map[string]any)
+		itemMap := make(map[string]map[string]any, len(rawMap))
+		for k, v := range rawMap {
+			itemMap[k], _ = v.(map[string]any)
+		}
+		var spec *OrderSpec
+		if a[1] != nil {
+			s := a[1].(map[string]any)
+			spec = &OrderSpec{Sort: str(s["sort"]), Exclude: str(s["exclude"]), Include: str(s["include"])}
+		}
+		return Order(itemMap, spec)
+	},
+	"entity": func(a []any) any {
+		m, _ := a[0].(map[string]any)
+		return Entity(m)
+	},
+	"stringify":  func(a []any) any { return Stringify(a[0]) },
+	"decircular": func(a []any) any { return Decircular(a[0]) },
+}
+
+func TestSharedSpecs(t *testing.T) {
+	for _, fn := range []string{"camelify", "dive", "get", "joins", "pinify", "order", "entity", "stringify", "decircular"} {
+		fn := fn
+		t.Run(fn, func(t *testing.T) {
+			rows := loadSpec(t, fn)
+			if len(rows) == 0 {
+				t.Fatalf("no spec rows for %s", fn)
+			}
+			for _, row := range rows {
+				row := row
+				t.Run(row.name, func(t *testing.T) {
+					got := canon(adapters[fn](row.args))
+					want := canon(row.expected)
+					if got != want {
+						t.Errorf("%s/%s mismatch\n got=%s\nwant=%s", fn, row.name, got, want)
+					}
+				})
+			}
+		})
 	}
 }
 
-func TestPinifyPartial(t *testing.T) {
-	if r := Pinify([]string{"a", "b", "c"}); r != "a:b,c:" {
-		t.Errorf("Pinify(['a','b','c']) = %q, want %q", r, "a:b,c:")
-	}
-	if r := Pinify([]string{"a"}); r != "a:" {
-		t.Errorf("Pinify(['a']) = %q, want %q", r, "a:")
-	}
-	if r := Pinify([]string{}); r != "" {
-		t.Errorf("Pinify([]) = %q, want %q", r, "")
-	}
-}
-
-func TestJoinsTypes(t *testing.T) {
-	if r := Joins([]any{"x", 1.5}, ":"); r != "x:1.5" {
-		t.Errorf("Joins(['x',1.5]) = %q, want %q", r, "x:1.5")
-	}
-	if r := Joins([]any{"x", 2.0}, ":"); r != "x:2" {
-		t.Errorf("Joins(['x',2.0]) = %q, want %q", r, "x:2")
-	}
-	if r := Joins([]any{"x", 1234567.0}, ":"); r != "x:1234567" {
-		t.Errorf("Joins(['x',1234567]) = %q, want %q", r, "x:1234567")
-	}
-	if r := Joins([]any{"x", true}, ":"); r != "x:true" {
-		t.Errorf("Joins(['x',true]) = %q, want %q", r, "x:true")
-	}
-	if r := Joins([]any{"x", nil}, ":"); r != "x:" {
-		t.Errorf("Joins(['x',nil]) = %q, want %q", r, "x:")
-	}
-}
+// ---------------------------------------------------------------------------
+// Go-specific tests: behaviour that cannot be a shared fixture (typed numbers,
+// cycles, non-finite floats, nil maps) and the defensive branches that JSON
+// input cannot reach.
+// ---------------------------------------------------------------------------
 
 func TestDiveMap(t *testing.T) {
-	node := map[string]any{
-		"a": map[string]any{"b": 1},
-		"c": map[string]any{"d": 2},
-	}
+	node := map[string]any{"a": map[string]any{"b": 1}, "c": map[string]any{"d": 2}}
 
-	result := DiveMap(node, func(path []string, leaf any) (string, any, bool) {
+	got := DiveMap(node, func(path []string, leaf any) (string, any, bool) {
 		return strings.Join(path, "."), leaf, true
 	})
-	expected := map[string]any{"a.b": 1, "c.d": 2}
-	if !reflect.DeepEqual(result, expected) {
-		t.Errorf("DiveMap = %v, want %v", result, expected)
+	if canon(got) != canon(map[string]any{"a.b": 1, "c.d": 2}) {
+		t.Errorf("DiveMap = %v", got)
 	}
 
-	// A false ok omits the entry.
-	result2 := DiveMap(node, func(path []string, leaf any) (string, any, bool) {
+	// ok=false omits the entry.
+	got2 := DiveMap(node, func(path []string, leaf any) (string, any, bool) {
 		if path[1] == "b" {
 			return "", nil, false
 		}
 		return strings.Join(path, "."), leaf, true
 	})
-	expected2 := map[string]any{"c.d": 2}
-	if !reflect.DeepEqual(result2, expected2) {
-		t.Errorf("DiveMap (filtered) = %v, want %v", result2, expected2)
+	if canon(got2) != canon(map[string]any{"c.d": 2}) {
+		t.Errorf("DiveMap filtered = %v", got2)
 	}
 }
 
-func TestGetArray(t *testing.T) {
-	if v := Get(map[string]any{"a": []any{10, 20, 30}}, "a.1"); v != 20 {
-		t.Errorf("Get array index = %v, want 20", v)
+func TestDiveNilAndScalarNode(t *testing.T) {
+	if r := Dive(nil); len(r) != 0 {
+		t.Errorf("Dive(nil) = %v, want empty", r)
 	}
-	if v := Get([]any{map[string]any{"x": 1}}, "0.x"); v != 1 {
-		t.Errorf("Get array element field = %v, want 1", v)
-	}
-	if v := Get(map[string]any{"a": []any{1}}, "a.5"); v != nil {
-		t.Errorf("Get array out-of-range = %v, want nil", v)
-	}
-	if v := Get(map[string]any{"a": []any{10, 20, 30}}, "a.01"); v != nil {
-		t.Errorf("Get non-canonical index = %v, want nil", v)
+	// White-box: a non-map/non-slice node hits diveInternal's default branch.
+	var items []DiveEntry
+	diveInternal(42, 2, nil, &items)
+	if len(items) != 0 {
+		t.Errorf("diveInternal(scalar) produced %v", items)
 	}
 }
 
-func TestEntitySkipsMalformed(t *testing.T) {
-	// Missing main/ent: nil, no panic.
-	if r := Entity(map[string]any{}); r != nil {
-		t.Errorf("Entity({}) = %v, want nil", r)
+func TestJoinsTypedAndNonFinite(t *testing.T) {
+	// int / int64 (JSON only ever yields float64).
+	if r := Joins([]any{"x", 5, "y", int64(7)}, ":"); r != "x:5:y:7" {
+		t.Errorf("Joins typed ints = %q", r)
 	}
-	// A `$`-shaped ent that carries a field produces a path shorter than
-	// base/name: it must be skipped, not panic (index-out-of-range regression).
-	r := Entity(map[string]any{"main": map[string]any{"ent": map[string]any{
-		"$": map[string]any{"field": map[string]any{"f": map[string]any{"kind": "x"}}}}}})
-	if len(r) != 0 {
-		t.Errorf("Entity($-shaped) = %v, want empty", r)
-	}
-	// An entity with no field map is skipped.
-	r2 := Entity(map[string]any{"main": map[string]any{"ent": map[string]any{
-		"base": map[string]any{"name": map[string]any{"valid": map[string]any{"a": "A"}}}}}})
-	if len(r2) != 0 {
-		t.Errorf("Entity(no-field) = %v, want empty", r2)
-	}
-}
-
-func TestDecircularEmpty(t *testing.T) {
-	// Empty maps/slices are copied through untouched (no false cycle markers).
-	in := map[string]any{"m": map[string]any{}, "s": []any{}, "n": 1}
-	out := Decircular(in)
-	if !reflect.DeepEqual(out, in) {
-		t.Errorf("Decircular(empty containers) = %v, want %v", out, in)
-	}
-}
-
-// Helpers
-
-func assertOrderKeys(t *testing.T, items []map[string]any, expectedKeys []string) {
-	t.Helper()
-	if len(items) != len(expectedKeys) {
-		t.Errorf("got %d items, want %d", len(items), len(expectedKeys))
-		return
-	}
-	for i, item := range items {
-		key, _ := item["key"].(string)
-		if key != expectedKeys[i] {
-			t.Errorf("item[%d].key = %q, want %q", i, key, expectedKeys[i])
+	// Non-finite floats match JS String().
+	for _, c := range []struct {
+		v    float64
+		want string
+	}{{math.Inf(1), "Infinity"}, {math.Inf(-1), "-Infinity"}, {math.NaN(), "NaN"}} {
+		if r := Joins([]any{c.v}, ":"); r != c.want {
+			t.Errorf("Joins(%v) = %q, want %q", c.v, r, c.want)
 		}
 	}
 }
 
-func assertOrderTitles(t *testing.T, items []map[string]any, expectedTitles []string) {
-	t.Helper()
-	for i, item := range items {
-		title, _ := item["title"].(string)
-		if title != expectedTitles[i] {
-			t.Errorf("item[%d].title = %q, want %q", i, title, expectedTitles[i])
+func TestGetScalarRoot(t *testing.T) {
+	// GetPath default branch for a scalar root.
+	if v := Get(5, "a"); v != nil {
+		t.Errorf("Get(5, 'a') = %v, want nil", v)
+	}
+}
+
+func TestOrderNoSpecAndEmptySort(t *testing.T) {
+	items := map[string]map[string]any{"b": {"title": "B"}, "a": {"title": "A"}}
+	// nil spec: Go returns lexicographic key order.
+	if r := Order(items, nil); canon(r) != canon([]any{
+		map[string]any{"key": "a", "title": "A"},
+		map[string]any{"key": "b", "title": "B"},
+	}) {
+		t.Errorf("Order(nil spec) = %s", canon(r))
+	}
+	// Empty Sort with an Exclude exercises orderSort's early return.
+	if r := Order(items, &OrderSpec{Exclude: "a"}); canon(r) != canon([]any{
+		map[string]any{"key": "b", "title": "B"},
+	}) {
+		t.Errorf("Order(empty sort) = %s", canon(r))
+	}
+}
+
+func TestOrderNonStringKeyDropped(t *testing.T) {
+	// Documented divergence [18]: an item with a non-string preset key is
+	// dropped by the string-typed filter/sort guards (covers the ok==false
+	// paths in filterItems / byKey / orderExclude / orderInclude).
+	items := map[string]map[string]any{
+		"a": {"key": 5, "title": "X"},
+		"b": {"title": "Y"},
+	}
+	r := Order(items, &OrderSpec{Sort: "alpha$", Exclude: "z", Include: "b"})
+	if canon(r) != canon([]any{map[string]any{"key": "b", "title": "Y"}}) {
+		t.Errorf("Order(non-string key) = %s", canon(r))
+	}
+}
+
+func TestStringifyCyclesAndErrors(t *testing.T) {
+	// Map cycle.
+	m := map[string]any{"a": 1}
+	m["self"] = m
+	if got := Stringify(m); got != `{"a":1,"self":"[Circular *]"}` {
+		t.Errorf("Stringify(map cycle) = %q", got)
+	}
+	// Slice cycle.
+	s := make([]any, 1)
+	s[0] = s
+	if got := Stringify(s); !strings.Contains(got, "Circular") {
+		t.Errorf("Stringify(slice cycle) = %q", got)
+	}
+	// A value encoding/json cannot marshal yields "".
+	if got := Stringify(make(chan int)); got != "" {
+		t.Errorf("Stringify(chan) = %q, want empty", got)
+	}
+}
+
+func TestStringifyNonFinite(t *testing.T) {
+	if got := Stringify(map[string]any{"x": math.NaN()}); got != `{"x":null}` {
+		t.Errorf("Stringify(NaN) = %q", got)
+	}
+	if got := Stringify(math.Inf(1)); got != "null" {
+		t.Errorf("Stringify(Inf) = %q", got)
+	}
+	// Non-finite inside a slice is nulled too.
+	if got := Stringify([]any{1.0, math.Inf(-1)}); got != `[1,null]` {
+		t.Errorf("Stringify(slice Inf) = %q", got)
+	}
+	// float32 non-finite normalises to null; a finite float32 passes through.
+	if got := Stringify(map[string]any{"x": float32(math.Inf(-1))}); got != `{"x":null}` {
+		t.Errorf("Stringify(float32 -Inf) = %q", got)
+	}
+	if got := Stringify(float32(1.5)); got != "1.5" {
+		t.Errorf("Stringify(float32 1.5) = %q", got)
+	}
+}
+
+func TestDecircularPreservesNonFinite(t *testing.T) {
+	// Decircular is a faithful deep-copy: non-finite floats are preserved (only
+	// Stringify normalises them), matching the canonical TS decircular.
+	if v, ok := Decircular(math.NaN()).(float64); !ok || !math.IsNaN(v) {
+		t.Errorf("Decircular(NaN) = %v, want NaN preserved", Decircular(math.NaN()))
+	}
+	out, _ := Decircular(map[string]any{"x": math.Inf(1)}).(map[string]any)
+	if v, ok := out["x"].(float64); !ok || !math.IsInf(v, 1) {
+		t.Errorf("Decircular({x:Inf}) did not preserve Inf: %v", out)
+	}
+}
+
+func TestJoinsObjectNonFiniteAndCycle(t *testing.T) {
+	// Non-finite nested in a joined object/array is nulled (matches TS).
+	if got := Joins([]any{"x", map[string]any{"a": math.NaN()}}, ":"); got != `x:{"a":null}` {
+		t.Errorf("Joins(obj NaN) = %q", got)
+	}
+	if got := Joins([]any{"x", []any{1.0, math.Inf(1)}}, ":"); got != "x:[1,null]" {
+		t.Errorf("Joins(arr Inf) = %q", got)
+	}
+	// A cyclic element renders empty (json.Marshal reports a cycle), matching
+	// TS's JSON.stringify throw -> ''.
+	m := map[string]any{"k": 1}
+	m["self"] = m
+	if got := Joins([]any{"x", m}, ":"); got != "x:" {
+		t.Errorf("Joins(cyclic obj) = %q, want %q", got, "x:")
+	}
+	// A value json cannot marshal even after nulling non-finite (a channel)
+	// also renders empty.
+	if got := Joins([]any{"x", make(chan int)}, ":"); got != "x:" {
+		t.Errorf("Joins(chan) = %q, want %q", got, "x:")
+	}
+}
+
+func TestJsTruthy(t *testing.T) {
+	cases := []struct {
+		v    any
+		want bool
+	}{
+		{nil, false}, {true, true}, {false, false},
+		{"", false}, {"x", true},
+		{float64(0), false}, {float64(1), true}, {math.NaN(), false},
+		{float32(0), false}, {float32(2), true}, {float32(math.NaN()), false},
+		{0, false}, {3, true},
+		{int32(0), false}, {int32(9), true},
+		{int64(0), false}, {int64(4), true},
+		{uint(0), false}, {uint(1), true}, {uint8(0), false},
+		{[]any{}, true}, {map[string]any{}, true},
+	}
+	for _, c := range cases {
+		if got := jsTruthy(c.v); got != c.want {
+			t.Errorf("jsTruthy(%v) = %v, want %v", c.v, got, c.want)
 		}
 	}
 }
 
-func toJSON(v any) string {
-	b, _ := json.MarshalIndent(v, "", "  ")
-	return string(b)
+func TestPadStartAndUtf16Len(t *testing.T) {
+	// n >= length early return (unreachable via human$, where padLen > len).
+	if got := padStart("abc", 2, '0'); got != "abc" {
+		t.Errorf("padStart no-pad = %q", got)
+	}
+	if got := padStart("x", 3, '0'); got != "00x" {
+		t.Errorf("padStart = %q", got)
+	}
+	if got := utf16Len("ab\U0001F600"); got != 4 { // 2 BMP + 2 (surrogate pair)
+		t.Errorf("utf16Len = %d, want 4", got)
+	}
 }

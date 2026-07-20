@@ -1,0 +1,10 @@
+name	args	expected
+kebab	["foo-bar"]	"FooBar"
+parts	[["order", "line", "item"]]	"OrderLineItem"
+double-dash	["a--b"]	"AB"
+preserve-caps	["iOS-app"]	"IOSApp"
+single	["foo"]	"Foo"
+leading-dash	["-foo"]	"Foo"
+trailing-dash	["foo-"]	"Foo"
+empty-string	[""]	""
+empty-array	[[]]	""

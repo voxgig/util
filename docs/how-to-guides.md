@@ -52,6 +52,14 @@ dive({ a: { b: { c: 1 } } }, 3)
 // [ [ ['a', 'b', 'c'], 1 ] ]
 ```
 
+Arrays are descended into as well, using their (numeric-order) indices as path
+segments:
+
+```js
+dive({ tags: ['a', 'b'] })
+// [ [ ['tags', '0'], 'a' ], [ ['tags', '1'], 'b' ] ]
+```
+
 To attach a value to a node that *also* has children, use the `$` key — it
 contributes a value at the node's own path without appearing in it:
 
@@ -142,8 +150,14 @@ With a single separator it behaves like a plain join:
 joins(['a', 'b', 'c'], '-')   // 'a-b-c'
 ```
 
-Numbers, booleans, and `null`/`undefined` are rendered as JavaScript's
-`Array.join` would render them (`null` becomes an empty string).
+Numbers and booleans stringify via `String`, `null`/`undefined` become the empty
+string, and objects and arrays are rendered as JSON — so the output matches the
+Go port rather than JS's default `[object Object]`:
+
+```js
+joins(['x', { a: 1 }], ':')   // 'x:{"a":1}'
+joins(['x', [1, 2]], ':')     // 'x:[1,2]'
+```
 
 ## How to sort and filter a collection
 
