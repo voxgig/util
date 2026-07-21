@@ -44,7 +44,7 @@ func jsTruthy(v any) bool {
 
 // Version is the released version of the Go module. It is rewritten by
 // `make publish-go V=x.y.z` to match the git tag (go/vx.y.z).
-const Version = "0.1.4"
+const Version = "0.1.5"
 
 // Camelify converts a kebab-case string (or slice of strings) to PascalCase.
 // Example: "foo-bar" => "FooBar"
