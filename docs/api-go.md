@@ -16,6 +16,8 @@ Contents: [`Camelify`](#camelify) · [`CamelifySlice`](#camelifyslice) ·
 [`Dive`](#dive) · [`DiveMap`](#divemap) · [`Get`](#get) · [`GetPath`](#getpath) ·
 [`Joins`](#joins) · [`Pinify`](#pinify) · [`Order`](#order) ·
 [`Entity`](#entity) · [`Stringify`](#stringify) · [`Decircular`](#decircular) ·
+[`PrettyPino`](#prettypino) · [`Getdlog`](#getdlog) ·
+[`ShowChanges`](#showchanges) · [`Shape` / `ShapeBuild`](#shape) ·
 [Types](#types)
 
 ---
@@ -315,16 +317,116 @@ util.Decircular(m)   // map[string]any{ "a": 1, "self": "[Circular *]" }
 
 TypeScript: [`decircular`](api-typescript.md#decircular).
 
+### `PrettyPino`
+
+```go
+func PrettyPino(name string, opts PrettyPinoOpts) Log
+type PrettyPinoOpts struct {
+    Pino  Log
+    Debug bool
+    Level string
+}
+```
+
+Build a pretty console logger backed by [`zerolog`](https://github.com/rs/zerolog)
+— the Go analogue of pino (JSON-first, low-allocation, with a built-in
+`ConsoleWriter` for readable development output). If `opts.Pino` is set it is
+returned unchanged (matching the TS `opts.pino` short-circuit, useful for
+dependency injection in tests). Level selection mirrors TS: `Level` wins when
+set, else `Debug=true` → `"debug"`, else `"info"`.
+
+```go
+log := util.PrettyPino("svc", util.PrettyPinoOpts{Debug: true})
+log.Info(map[string]any{"point": "startup", "note": "listening on :8080"})
+```
+
+TypeScript: [`prettyPino`](api-typescript.md#prettypino).
+
+### `Getdlog`
+
+```go
+func Getdlog(tag, filePath string) *DLog
+type DLog struct { Tag, File string }
+func (d *DLog) Emit(args ...any)
+func (d *DLog) Log(filterPath ...string) [][]any
+```
+
+Return a tagged handle to a process-global debug-trace accumulator. `Emit`
+appends `[tag, file, unix-millis, args...]`; `Log` returns entries whose tag
+equals this handle's tag, optionally filtered to a matching file basename.
+
+An empty tag defaults to `"-"`, and an empty `filePath` resolves to file
+`"-"`; a non-empty path is reduced to its basename. Go has no callable-struct
+syntax, so entries are appended via `d.Emit(...)` rather than by invoking the
+handle directly (as TS does).
+
+```go
+dlog := util.Getdlog("rev", "/some/where/file.ts")
+dlog.Emit("phase", "start")
+entries := util.Getdlog("rev", "").Log()          // all rev entries
+matched := util.Getdlog("rev", "").Log("file.ts") // filtered by basename
+```
+
+TypeScript: [`getdlog`](api-typescript.md#getdlog).
+
+### `ShowChanges`
+
+```go
+func ShowChanges(log Log, point string, jres ChangesResult, cwd string)
+type ChangesResult struct { Files ChangesFiles }
+type ChangesFiles  struct { Merged, Conflicted []string }
+```
+
+Log merged and conflicted files at `info` level, stripping the `cwd` prefix
+so log lines are relative. An empty `cwd` falls back to `os.Getwd`. One log
+entry per file, with the `merge` or `conflict` boolean set and a formatted
+`note` field. Accepts any `Log`-shaped logger (see [Types](#types) below).
+
+```go
+util.ShowChanges(log, "generate",
+    util.ChangesResult{Files: util.ChangesFiles{
+        Merged:     []string{"/proj/a.txt"},
+        Conflicted: []string{"/proj/b.txt"},
+    }}, "/proj")
+```
+
+TypeScript: [`showChanges`](api-typescript.md#showchanges).
+
+### `Shape`
+
+```go
+type Shape = shape.Schema
+func ShapeBuild(spec any) (*Shape, error)
+func MustShapeBuild(spec any) *Shape
+```
+
+Compile a schema-by-example specification via the
+[`shape`](https://github.com/rjrodger/shape/tree/main/go) Go port. `Shape` is
+a type alias for `shape.Schema`, so every method on the underlying schema
+type is available. Mirrors the TS `Shape` re-export and its `Shape.build`
+factory (which returns `*Shape` and an error, or panics under `MustShapeBuild`).
+
+```go
+sc, err := util.ShapeBuild(map[string]any{"port": 8080, "host": "localhost"})
+if err != nil { /* handle */ }
+out, verr := sc.Validate(map[string]any{"port": 3000})
+```
+
+TypeScript: [`Shape`](api-typescript.md#shape).
+
 ---
 
 ## Types
 
-| Type          | Definition                                            | Notes |
-| ------------- | ----------------------------------------------------- | ----- |
-| `DiveEntry`   | `struct { Path []string; Value any }`                 | one result of [`Dive`](#dive) |
-| `DiveMapper`  | `func(path []string, leaf any) (string, any, bool)`   | mapper for [`DiveMap`](#divemap) |
-| `OrderSpec`   | `struct { Sort, Exclude, Include string }`            | spec for [`Order`](#order) |
-| `OrderItem`   | `struct { Key, Title string; Fields map[string]any }` | convenience type for callers; `Order` itself works with `map[string]any` items |
-
-The TypeScript-only logging helpers (`prettyPino`, `getdlog`, `showChanges`) and
-the `Pino`/`Shape` re-exports have no Go equivalent.
+| Type              | Definition                                                          | Notes |
+| ----------------- | ------------------------------------------------------------------- | ----- |
+| `DiveEntry`       | `struct { Path []string; Value any }`                               | one result of [`Dive`](#dive) |
+| `DiveMapper`      | `func(path []string, leaf any) (string, any, bool)`                 | mapper for [`DiveMap`](#divemap) |
+| `OrderSpec`       | `struct { Sort, Exclude, Include string }`                          | spec for [`Order`](#order) |
+| `OrderItem`       | `struct { Key, Title string; Fields map[string]any }`               | convenience type for callers; `Order` itself works with `map[string]any` items |
+| `Log`             | interface with `Trace`/`Debug`/`Info`/`Warn`/`Error`/`Fatal(...any)` | pino-shaped logger; used by `PrettyPino` and `ShowChanges` |
+| `PrettyPinoOpts`  | `struct { Pino Log; Debug bool; Level string }`                     | options for [`PrettyPino`](#prettypino) |
+| `DLog`            | `struct { Tag, File string }` (methods `Emit`, `Log`)               | handle returned by [`Getdlog`](#getdlog) |
+| `ChangesResult`   | `struct { Files ChangesFiles }`                                     | argument to [`ShowChanges`](#showchanges) |
+| `ChangesFiles`    | `struct { Merged, Conflicted []string }`                            | merged and conflicted file lists |
+| `Shape`           | type alias for `shape.Schema`                                       | compiled schema; see [`Shape`](#shape) |

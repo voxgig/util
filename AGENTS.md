@@ -27,7 +27,8 @@ parity with it. When you change behaviour:
    `int`/`int64`, non-finite floats, cycles, nil maps).
 3. Rebuild TypeScript (`npm run build`) — `ts/dist/` and `ts/dist-test/` are committed.
 4. Run both test suites; keep `gofmt`/`go vet` clean. Data utilities are kept at
-   100% coverage in both languages (the Node/Pino logging helpers are best-effort).
+   100% coverage in both languages (the logging helpers — Pino in TS, zerolog in
+   Go — are best-effort in both).
 5. Update the docs in `docs/` and the quick-reference below if the API changed.
 
 Never let the Go behaviour drift from the TypeScript semantics.
@@ -73,8 +74,10 @@ go test -cover ./...   # statement coverage (kept at 100%)
 gofmt -l .             # prints nothing when formatted
 ```
 
-`pino`, `pino-pretty`, and `shape` are peer dependencies; `shape` requires
-Node >= 24. CI runs Node 24 and `latest`, plus a Go job.
+TS `pino`, `pino-pretty`, and `shape` are peer dependencies; `shape` requires
+Node >= 24. Go depends on `github.com/rs/zerolog` (the pino analogue) and
+`github.com/rjrodger/shape/go` (the Go port of `shape`). CI runs Node 24 and
+`latest`, plus a Go job.
 
 ## API quick-reference
 
@@ -93,15 +96,15 @@ Portable data utilities (present in both languages):
 | `stringify(val): string`                  | `Stringify(val any) string`                       | JSON-serialise, de-cycling first |
 | `decircular(val): any`                    | `Decircular(val any) any`                          | deep copy, replacing cycles with `[Circular *path]` |
 
-TypeScript-only logging helpers (Node/Pino-specific, **not** ported to Go):
+Logging helpers (both languages):
 
-| TypeScript                                   | Summary |
-| -------------------------------------------- | ------- |
-| `prettyPino(name, opts): Logger`             | build a pretty Pino logger |
-| `getdlog(tag?, file?): dlog`                 | lightweight global debug-trace accumulator |
-| `showChanges(log, point, jres, cwd?)`        | log merged/conflicted file sets |
-| `Pino`, `Shape`                              | re-exports of the `pino` and `shape` packages |
-| types `Log`, `FST`                           | logger shape; `typeof fs` |
+| TypeScript                                   | Go                                              | Summary |
+| -------------------------------------------- | ----------------------------------------------- | ------- |
+| `prettyPino(name, opts): Logger`             | `PrettyPino(name, PrettyPinoOpts) Log`          | pretty console logger (Pino in TS, zerolog in Go) |
+| `getdlog(tag?, file?): dlog`                 | `Getdlog(tag, file) *DLog` / `dlog.Emit(args…)` | lightweight global debug-trace accumulator |
+| `showChanges(log, point, jres, cwd?)`        | `ShowChanges(log Log, point, ChangesResult, cwd)` | log merged/conflicted file sets |
+| `Pino`, `Shape`                              | `Shape` (type alias for `shape.Schema`), `ShapeBuild` / `MustShapeBuild` | expose the pino/shape packages |
+| types `Log`, `FST`                           | interface `Log`                                 | pino-shaped logger contract |
 
 Full signatures, parameters, edge cases, and examples: [TypeScript API](docs/api-typescript.md),
 [Go API](docs/api-go.md).
