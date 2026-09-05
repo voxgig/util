@@ -31,7 +31,7 @@ Run it at any point with `node play.mjs`.
 
 ## 2. Turn identifiers into type names
 
-The simplest helper converts a kebab-case identifier into PascalCase:
+The smallest helper converts a kebab-case identifier into PascalCase:
 
 ```js
 console.log(camelify('user-profile'))   // UserProfile

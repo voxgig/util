@@ -70,7 +70,7 @@ order**, so the output is deterministic and identical to the Go port.
 - **`$` key** — a child under the key `$` contributes its value at the *current*
   path (the `$` is not added to the path), letting an interior node carry a value
   while still having children.
-- **`mapper`** — when supplied (as the 2nd or 3rd argument), each `(path, leaf)`
+- **`mapper`** — when supplied (as the second or third argument), each `(path, leaf)`
   is passed through it to produce a `[key, value]` pair, and the results are
   collected into an object. A `null`/`undefined` key omits the entry. With a
   mapper, `dive` returns an object instead of an array.
@@ -123,8 +123,8 @@ joins(arr: any[], ...seps: string[]): string
 ```
 
 Join array elements using a hierarchy of separators, listed finest-first.
-`seps[0]` is placed between every element; `seps[1]` replaces it at every 2nd
-boundary; `seps[2]` at every 4th; in general `seps[j]` applies at each `2^j`-th
+`seps[0]` is placed between every element; `seps[1]` replaces it at every second
+boundary; `seps[2]` at every fourth; in general `seps[j]` applies at each `2^j`-th
 boundary, and the coarsest applicable separator wins.
 
 Each element is stringified: `null`/`undefined` → empty string, strings as-is,
