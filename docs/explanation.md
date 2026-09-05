@@ -96,7 +96,7 @@ The practical guidance is to pass an explicit `sort` whenever you need `order`'s
 output to be identical across languages. Preserving the caller's insertion order
 in Go would mean changing the API to accept an ordered structure instead of a
 map — rejected as too heavy for a small utility, and at odds with `order`'s
-no-sort case meaning "the order you gave me".
+no-sort case meaning "the order as given".
 
 ### Number formatting
 
@@ -130,7 +130,7 @@ The `human$` sort left-pads each title to the longest title's length before
 comparing. JavaScript's `String.length` counts UTF-16 code units; Go's `len` on a
 string counts bytes. Measuring bytes would pad multibyte titles incorrectly, so
 the Go port counts UTF-16 code units directly (`utf16Len`: one per rune, two per
-rune above `U+FFFF`). This matches `String.length` exactly — including astral
+rune beyond `U+FFFF`). This matches `String.length` exactly — including astral
 characters such as emoji — so the padded `title$` values agree in both languages.
 (The *comparison order* of astral titles can still differ, because JS compares
 UTF-16 code units while Go compares UTF-8 bytes; this only affects code points
@@ -165,9 +165,9 @@ in a typed setting and behaves the same.
 
 A handful of divergences are rooted so deeply in one language's runtime that
 matching them in the other would mean importing a heavyweight dependency or
-re-implementing an intricate algorithm — for behaviour that cannot arise from the
+re-implementing a large algorithm — for behaviour that cannot arise from the
 JSON-shaped data this library actually handles (identifiers, pins, paths, model
-trees). These are left as conscious, documented differences and pinned by
+trees). These are left as conscious, documented differences, and pinned by
 per-language tests rather than shared fixtures:
 
 - **`camelify` first-character casing.** JS `toUpperCase` applies full Unicode

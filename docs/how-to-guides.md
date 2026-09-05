@@ -134,7 +134,7 @@ pinify(['user', 'alice', 'role'])            // 'user:alice,role:'
 
 `joins` joins array elements with a *hierarchy* of separators. List them
 finest-first. `seps[0]` goes between every element; `seps[1]` replaces it at
-every 2nd boundary; `seps[2]` at every 4th; in general `seps[j]` applies at every
+every second boundary; `seps[2]` at every fourth; in general `seps[j]` applies at every
 `2^j`-th boundary, and the coarsest applicable separator wins:
 
 ```js

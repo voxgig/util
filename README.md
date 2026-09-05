@@ -62,17 +62,15 @@ question:
 
 Start at the [documentation index](docs/README.md) for an overview.
 
-## Working with AI coding agents
-
-Repository conventions and a complete, scannable API quick-reference for AI
-coding agents live in [AGENTS.md](AGENTS.md).
-
 ## Building and contributing
 
 This repo contains both implementations, side by side in `ts/` and `go/`, kept
 in parity by shared behavioural fixtures in [`test/`](test) (`*.tsv`) that both
-test suites run. TypeScript output in `ts/dist/` and `ts/dist-test/` is committed,
-so rebuild after changing `ts/src/` or `ts/test/`.
+test suites run. TypeScript is canonical: change it first, capture the behaviour
+as a fixture row, then mirror the change in Go. TypeScript output in `ts/dist/`
+and `ts/dist-test/` is committed, so rebuild after changing `ts/src/` or
+`ts/test/`. The cross-language gotchas are in [How it works](docs/explanation.md),
+and the documentation itself follows [the style guide](STYLE-GUIDE.md).
 
 ```bash
 # TypeScript (from ts/)

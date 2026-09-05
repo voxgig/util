@@ -150,7 +150,7 @@ func Joins(arr []any, seps ...string) string
 ```
 
 Join elements with a hierarchy of separators, finest-first: `seps[0]` between
-every element, `seps[1]` at every 2nd boundary, `seps[2]` at every 4th, and so on
+every element, `seps[1]` at every second boundary, `seps[2]` at every fourth, and so on
 (coarsest applicable wins). Elements are rendered to match JavaScript's
 `String()`: strings as-is; `int`/`int64`/`float64` numerically (whole floats
 without a trailing `.0`, `Infinity`/`-Infinity`/`NaN` spelled out, `-0` as `0`);
