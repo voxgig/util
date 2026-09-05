@@ -96,7 +96,7 @@ The practical guidance is to pass an explicit `sort` whenever you need `order`'s
 output to be identical across languages. Preserving the caller's insertion order
 in Go would mean changing the API to accept an ordered structure instead of a
 map — rejected as too heavy for a small utility, and at odds with `order`'s
-no-sort case meaning "the order you gave me".
+no-sort case meaning "the order as given".
 
 ### Number formatting
 
