@@ -1,0 +1,412 @@
+# Releases @voxgig/util: publishes to npm from `ts/` AND writes the git tag.
+#
+# Adapted from voxgig/struct's publish.yml, the closest sibling — a
+# multi-language library with no committed lockfile and per-port tags — which
+# in turn carries voxgig/sdkgen's reasoning for every guard below.
+#
+# ONE FILE, BECAUSE NPM ALLOWS EXACTLY ONE. A trusted publisher is registered
+# on npmjs.com against a single workflow FILENAME, and every @voxgig package
+# is registered against `publish.yml` or `release.yml`. The name itself is
+# arbitrary, but only the ONE registered file can publish, so anything that
+# must accompany a publish has to live inside it. Here that is the tag.
+#
+# A second workflow cannot publish whatever permissions it holds; npm rejects
+# the exchange and reports it as
+#
+#   npm error 404 Not Found - PUT https://registry.npmjs.org/...
+#
+# — a 404, not a 403, so as not to leak whether the package exists.
+#
+# THE PACKAGE HAS NEVER PUBLISHED OVER OIDC, so the registration is the first
+# thing to get wrong. 0.5.4 went out from a laptop over a personal token: it
+# sits on npm with no provenance attestation, unlike every other package in
+# the SDK dependency chain. Before the first release through this file:
+#
+#   npm trust github @voxgig/util --repo voxgig/util \
+#     --file publish.yml --allow-publish --allow-stage-publish
+#
+# npm registers a publisher only against a package that already EXISTS, which
+# @voxgig/util does, so there is nothing to bootstrap. Until that command has
+# run, a dispatch here fails the exchange as exactly the 404 above: the tests
+# pass, the tarball packs, the PUT is rejected. The registration is what to
+# check, and the package's npm settings page is where to check it. A
+# `dry_run` here cannot: see DRY RUN below.
+#
+# THE GO PORT IS NOT IN THIS FILE, and that is not an omission. `go/` has no
+# registry and no credential: the module proxy resolves
+# `github.com/voxgig/util/go` from the `go/v<version>` tag in this repository
+# and nothing else, so publishing it is pushing a tag. `make publish-go`
+# stays the way to cut one. Only the npm side needs OIDC, so only the npm
+# side is here.
+#
+# TWO JOBS, BECAUSE THEY NEED DIFFERENT PRIVILEGES.
+#
+#   publish  id-token: write, contents: READ. Runs the install, the build and
+#            the tests — i.e. dependency lifecycle scripts and project code.
+#   tag      contents: write. Runs git and nothing else.
+#
+# Keeping them in one job would hand a repository-write credential to every
+# dependency postinstall script that runs during the install, because
+# checkout persists its token into the git config for the whole job.
+#
+# A ref pushed with GITHUB_TOKEN does NOT start another workflow run (GitHub
+# suppresses that so workflows cannot trigger themselves), so the tag job
+# cannot be replaced by "tag and let the publisher fire on it".
+#
+# TWO WAYS IN:
+#
+#   workflow_dispatch  the normal path. Publishes if missing, then tags.
+#   push: tags ts/v*   the manual path, for a tag pushed by hand. Publishes
+#                      only; the tag job does not run.
+#
+# A `*` in a ref filter does not cross `/`, so a `go/v*` tag pushed by
+# `make publish-go` never starts an npm release of whatever ts/package.json
+# happens to say.
+#
+# DRY RUN. `dry_run: true` on a dispatch rehearses a release without making
+# one: every guard and every test runs, the artifact is packed with
+# `--dry-run`, nothing is published and nothing is tagged.
+#
+# IT DOES NOT TEST THE TRUSTED PUBLISHER, and must not be sold as if it did.
+# `npm publish --dry-run` packs the tarball and stops; the OIDC exchange only
+# happens inside a real publish. A rehearsal therefore proves the guards, the
+# build, the tests and the tarball, and says nothing about whether the
+# registration above took. Check that on the package's npm settings page.
+#
+# A REHEARSAL IS NOT A WEAKER CREDENTIAL, so it does not run off `main`
+# either. `permissions` takes no expression, so this job holds
+# `id-token: write` on every path through it, rehearsal included, and a
+# dispatch runs the workflow and the project code AT THE REF IT IS GIVEN. An
+# off-main rehearsal would run that branch's install, build and test scripts
+# beside a credential that can mint an npm publishing token, and skipping the
+# named publish step is not an authorization boundary. voxgig/struct exempts
+# its rehearsal from the main check because minting and revoking a real
+# crates.io token is the only way to test THAT registry's publisher; npm's
+# dry run mints nothing, so the exemption would buy nothing here and is not
+# carried over.
+#
+# For a boundary stronger than a step guard, put this job in a GitHub
+# environment with a main-only deployment branch rule and register the npm
+# publisher against that environment. The guard below lives in a file the
+# dispatching ref controls; an environment rule does not.
+#
+# TAGS ARE `ts/v<version>`, MATCHING THE PORT. The repository released under
+# a bare `v<version>` up to 0.5.2; 0.5.3 and 0.5.4 went out as `ts/v0.5.3`
+# and `ts/v0.5.4`, alongside `go/v0.1.x` for the Go port. This file continues
+# the current scheme. THE BARE TAGS STAY: they are what those nineteen
+# releases were published under, and rewriting a released marker to tidy a
+# scheme would be worse than the inconsistency.
+#
+# VERSION BUMPS ARE NOT AUTOMATED, deliberately. Nothing here commits. It
+# reads the version already on the branch and releases exactly that, so the
+# bump stays a reviewable diff and the release stays a button.
+#
+#   ts/package.json "version" -> tag ts/v<version>
+#
+# Renaming this file breaks publishing until the npm-side trusted publisher
+# is updated to match, so a rename and the `npm trust` re-run go together. Do
+# NOT publish locally over a token: that bypasses OIDC and its provenance
+# attestation entirely. The Makefile's `publish-npm` target and the
+# `repo-publish*` scripts in ts/package.json are that older path; they remain
+# for recovery, but a release cut through them lands unattested.
+
+name: publish
+
+on:
+  push:
+    tags: ['ts/v*']
+  workflow_dispatch:
+    inputs:
+      expect_sha:
+        description: 'Optional: refuse unless main is still at this commit'
+        type: string
+        default: ''
+      dry_run:
+        description: 'Rehearse only: run every guard and test, publish nothing, tag nothing'
+        type: boolean
+        default: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  publish:
+    name: npm publish (ts)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Deliberately NOT contents: write — see the header. This job runs
+    # dependency lifecycle scripts.
+    permissions:
+      id-token: write
+      contents: read
+
+    outputs:
+      version: ${{ steps.versions.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24.x
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Resolve the version being released
+        id: versions
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./ts/package.json').version")"
+          test -n "$VERSION" || { echo "::error::could not read ts/package.json version"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "$VERSION -> tag ts/v$VERSION"
+
+      # RELEASES COME FROM main, INCLUDING FROM THE BUTTON. `gh workflow run
+      # --ref` accepts any branch or tag, so without this the Actions UI or a
+      # stray API call could publish and tag a feature branch, irreversibly.
+      #
+      # A REHEARSAL IS NOT EXEMPT. This job holds `id-token: write` on every
+      # path through it, so an off-main `dry_run` would run that branch's
+      # install, build and test scripts beside a credential that can mint an
+      # npm publishing token. Reaching no publish step does not take that
+      # credential away. See the header.
+      - name: Dispatches must come from main
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::error::dispatch ref is $GITHUB_REF_NAME; releases must come from main"
+            exit 1
+          fi
+
+      # `--ref main` names a MUTABLE branch, so between pushing the release
+      # commit and this run resolving, another commit can land and be
+      # published under the version just bumped. Pass the SHA you pushed; if
+      # main has moved since, stop rather than release something nobody asked
+      # for.
+      - name: main must still be the commit we intended to release
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.expect_sha != '' }}
+        env:
+          EXPECT_SHA: ${{ inputs.expect_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_SHA" != "$EXPECT_SHA" ]; then
+            echo "::error::main has moved: expected $EXPECT_SHA, got $GITHUB_SHA"
+            exit 1
+          fi
+
+      # A tag pushed by hand must agree with the version it claims to
+      # release. Without this, pushing ts/v1.2.3 while ts/package.json still
+      # says 1.2.2 resolves 1.2.2, finds it already published, skips the
+      # publish, and the run goes GREEN — leaving a tag with no release
+      # behind it.
+      - name: The pushed tag must match the package version
+        if: ${{ github.event_name == 'push' }}
+        env:
+          PKG_VERSION: ${{ steps.versions.outputs.version }}
+        run: |
+          set -euo pipefail
+          WANT="ts/v$PKG_VERSION"
+          if [ "$GITHUB_REF_NAME" != "$WANT" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match ts/package.json ($WANT)"
+            exit 1
+          fi
+
+      # AN EXISTING TAG IS ONLY A PROBLEM IF IT POINTS SOMEWHERE ELSE. A tag
+      # already on this commit is the idempotent case — nothing to create,
+      # not an error — which is what lets a partly-failed release be
+      # re-dispatched.
+      #
+      # A REHEARSAL WARNS WHERE A RELEASE STOPS. This guard and the registry
+      # one below ask "does the world already contain this version", and at
+      # the moment you most want to rehearse — this file just changed, the
+      # manifest still says the version last released — the honest answer is
+      # yes. Failing there would mean no rehearsal without a bump first,
+      # which is exactly the friction that stops people rehearsing at all.
+      - name: Refuse a tag that points at a different commit
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          PKG_VERSION: ${{ steps.versions.outputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          TAG="ts/v$PKG_VERSION"
+          HEAD_SHA="$(git rev-parse HEAD)"
+          AT="$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" 2>/dev/null || true)"
+          if [ -n "$AT" ] && [ "$AT" != "$HEAD_SHA" ]; then
+            MSG="tag $TAG already exists on $AT, not this commit — bump ts/package.json"
+            if [ "${DRY_RUN:-false}" = "true" ]; then
+              echo "::warning::$MSG (rehearsal: a real release stops here)"
+            else
+              echo "::error::$MSG"
+              exit 1
+            fi
+          fi
+          if [ -n "$AT" ]; then echo "$TAG already points here; nothing to create"; fi
+
+      # `npm install`, NOT `npm ci`. This repository gitignores
+      # package-lock.json (.gitignore:110) and commits no lockfile in either
+      # port, so `npm ci` has nothing to install from and exits 1 before
+      # doing anything — which is how the first run of the same workflow in
+      # voxgig/struct failed, 17 seconds in. ci.yml installs the same way.
+      #
+      # Nothing about the PUBLISHED artifact loosens by this: ts/package.json
+      # declares no `dependencies` at all — pino, pino-pretty and shape are
+      # PEERS, resolved by the consumer — so everything installed here is
+      # build and test tooling that never reaches the tarball.
+      - name: Install dependencies
+        working-directory: ts
+        run: npm install
+
+      - name: Build and test
+        working-directory: ts
+        run: |
+          npm run build
+          npm test
+
+      # Trusted publishing requires npm >= 11.5.1.
+      - name: Use a trusted-publishing capable npm
+        run: npm install -g npm@latest
+
+      # THE REGISTRY IS THE SOURCE OF TRUTH FOR "IS THIS RELEASED", not the
+      # tag. A run can publish and then fail before tagging, leaving a
+      # version on npm with nothing pointing at it. Without this check that
+      # state is unrecoverable: the publish step dies on "cannot publish over
+      # the previously published versions" before the tag job ever runs.
+      - name: Is this version already on npm?
+        id: registry
+        env:
+          PKG_VERSION: ${{ steps.versions.outputs.version }}
+        run: |
+          set -euo pipefail
+          V="$PKG_VERSION"
+          if npm view "@voxgig/util@$V" version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "$V is already on npm — skipping publish"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "$V is not on npm — will publish"
+          fi
+
+      # SKIPPING THE PUBLISH ASSUMES "SAME VERSION MEANS SAME CODE". That
+      # holds only if main has not moved. Publish succeeds at commit A, the
+      # tag job fails, main advances to B, someone re-dispatches: the version
+      # is still on npm, so the publish is skipped and B gets tagged — while
+      # the registry artifact was built from A. The tag would then point at
+      # code the published package does not contain.
+      #
+      # npm records the source commit as `gitHead`, and a hand publish from a
+      # git checkout records one too: @voxgig/util@0.5.4 carries one. So a
+      # dispatch that forgets the version bump stops at the mismatch below,
+      # which is the correct outcome.
+      #
+      # ABSENT gitHead IS NOT A WARNING. A version this workflow published
+      # always records one, so absent means the artifact came from somewhere
+      # else and nothing ties it to this commit; tagging it would be exactly
+      # the false backfill the header refuses. Blocking cannot strand a
+      # legitimate recovery, which is a re-dispatch after the tag job failed
+      # on a version this workflow published, gitHead and all. The sibling
+      # repositories warn here; this is a deliberate divergence.
+      - name: A published version must come from this commit
+        if: ${{ steps.registry.outputs.published == 'true' }}
+        env:
+          PKG_VERSION: ${{ steps.versions.outputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          V="$PKG_VERSION"
+          GH="$(npm view "@voxgig/util@$V" gitHead 2>/dev/null || true)"
+          if [ -z "$GH" ]; then
+            MSG="npm records no gitHead for $V; nothing ties that published artifact to this commit, so it cannot be tagged — bump ts/package.json"
+            if [ "${DRY_RUN:-false}" = "true" ]; then
+              echo "::warning::$MSG (rehearsal: a real release stops here)"
+            else
+              echo "::error::$MSG"
+              exit 1
+            fi
+          elif [ "$GH" != "$GITHUB_SHA" ]; then
+            MSG="npm has $V built from $GH, but this run is $GITHUB_SHA — tagging would point at code the registry does not contain"
+            if [ "${DRY_RUN:-false}" = "true" ]; then
+              echo "::warning::$MSG (rehearsal: a real release stops here)"
+            else
+              echo "::error::$MSG"
+              exit 1
+            fi
+          else
+            echo "$V on npm was built from this commit"
+          fi
+
+      # Publish BEFORE tagging (the tag job `needs` this one), so a tag only
+      # ever exists for a release that reached the registry.
+      - name: Publish to npm
+        if: ${{ steps.registry.outputs.published == 'false' && !inputs.dry_run }}
+        working-directory: ts
+        env:
+          PKG_VERSION: ${{ steps.versions.outputs.version }}
+        run: |
+          set -euo pipefail
+          V="$PKG_VERSION"
+          # A PRERELEASE MUST NOT BECOME `latest`. `npm publish` defaults to
+          # the latest dist-tag, so publishing 1.2.3-beta.1 that way hands it
+          # to every unpinned install.
+          case "$V" in
+            *-*) DIST=next ;;
+            *)   DIST=latest ;;
+          esac
+          echo "publishing $V under dist-tag $DIST"
+          npm publish --access public --tag "$DIST"
+
+      # A rehearsal packs the tarball and stops. It cannot prove npm's
+      # trusted publisher works — that exchange happens inside a real
+      # `npm publish` — so this checks the artifact, not the credential.
+      - name: Rehearse the npm package
+        if: ${{ inputs.dry_run }}
+        working-directory: ts
+        run: npm publish --access public --dry-run
+
+  # Runs git and nothing else. No npm install, no project code — so the
+  # repository-write credential is never in scope while third-party code
+  # runs.
+  tag:
+    name: tag (ts)
+    needs: publish
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Tag the release
+        env:
+          PKG_VERSION: ${{ needs.publish.outputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="ts/v$PKG_VERSION"
+          HEAD_SHA="$(git rev-parse HEAD)"
+
+          # EXISTENCE IS NOT ENOUGH. `git rev-parse --verify` only asks
+          # whether the name resolves; a tag created between the publish
+          # job's guard and this checkout could point anywhere. Treating that
+          # as the idempotent case would leave a green run with an npm
+          # artifact from THIS commit and a release tag on a different one.
+          # Dereference and compare.
+          AT="$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" 2>/dev/null || true)"
+          if [ -n "$AT" ]; then
+            if [ "$AT" != "$HEAD_SHA" ]; then
+              echo "::error::$TAG exists on $AT, not this commit ($HEAD_SHA)"
+              exit 1
+            fi
+            echo "$TAG already points here — nothing to do" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git tag "$TAG"
+          git push origin "refs/tags/$TAG"
+          echo "pushed $TAG" >> "$GITHUB_STEP_SUMMARY"
