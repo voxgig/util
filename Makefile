@@ -1,7 +1,10 @@
 .PHONY: all build test clean build-ts build-go test-ts test-go scan-prose clean-ts clean-go bump-go publish publish-rehearse publish-npm publish-go publish-dry publish-npm-dry publish-go-dry tags-npm tags-go reset
 
-# Never run recipes concurrently: publish-npm and publish-go both mutate the
-# worktree and index (bump, commit, tag, push), so `make -j publish` must serialize.
+# Never run recipes concurrently: the publish-npm and publish-go RECOVERY
+# targets each mutate the worktree and index (bump, commit, tag, push), so
+# running them under `make -j` must serialize. `make publish` no longer
+# depends on either — it dispatches publish.yml and touches nothing — but the
+# recovery pair is still reachable directly.
 .NOTPARALLEL:
 
 all: build test
