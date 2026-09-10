@@ -46,7 +46,7 @@ func jsTruthy(v any) bool {
 // `make bump-go V=x.y.z`, commit that diff, then `make publish` — which
 // releases this module (as the tag go/vx.y.z) and the npm package together
 // in one run. The npm package carries its own, independent version series.
-const Version = "0.1.5"
+const Version = "0.1.6"
 
 // Camelify converts a kebab-case string (or slice of strings) to PascalCase.
 // Example: "foo-bar" => "FooBar"
