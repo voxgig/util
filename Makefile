@@ -1,4 +1,4 @@
-.PHONY: all build test clean build-ts build-go test-ts test-go scan-prose clean-ts clean-go publish publish-npm publish-go publish-dry publish-npm-dry publish-go-dry tags-npm tags-go reset
+.PHONY: all build test clean build-ts build-go test-ts test-go scan-prose clean-ts clean-go bump-go publish publish-rehearse publish-npm publish-go publish-dry publish-npm-dry publish-go-dry tags-npm tags-go reset
 
 # Never run recipes concurrently: publish-npm and publish-go both mutate the
 # worktree and index (bump, commit, tag, push), so `make -j publish` must serialize.
@@ -54,12 +54,71 @@ tags-npm:
 tags-go:
 	git tag -l 'go/v*' --sort=-version:refname
 
-# Publish both npm and Go with patch version bumps. Runs full build+test for
-# both languages first so a failure in either aborts before any release has
-# side effects (prevents releasing npm without go parity).
-publish: build test publish-npm publish-go
+# RELEASING. Both halves go out of ONE run of .github/workflows/publish.yml:
+# publishing happens there and nowhere else, because npm allows exactly one
+# workflow file to publish and the tags have to be written by that same run.
+# A tag must only ever exist for a release that reached the registry, and for
+# the Go module the tag IS the release — so neither is written from a laptop.
+#
+#   make bump-go V=0.1.6     # edit go/util.go only; commit it in a PR
+#   make publish             # release both halves at the versions on main
+#   make publish GO=false    # npm only
+#   make publish NPM=false   # Go module only
+#   make publish-rehearse    # run every guard and test, release nothing
+#
+# The npm version lives in ts/package.json and is bumped with `npm version`
+# in ts/; the Go version is the `Version` constant in go/util.go. THE TWO
+# SERIES ARE INDEPENDENT: npm is at 0.5.x, the module at 0.1.x. Parity means
+# released together, not numbered alike.
+#
+# Bumps are NOT automated: they land as a reviewed diff, then the release is
+# a button. Nothing in this section commits or tags.
 
-# Publish npm package. Defaults to a patch bump on ts/package.json; override with V=x.y.z.
+NPM ?= true
+GO ?= true
+
+# Set the Go module version. Edits the file and stops — commit it in a PR.
+bump-go:
+	@test -n "$(V)" || (echo "Usage: make bump-go V=x.y.z" && exit 1)
+	# Portable in-place edit: GNU sed wants `-i`, BSD/macOS sed `-i ''`.
+	# A temp file plus mv sidesteps the difference.
+	sed 's/^const Version = ".*"/const Version = "$(V)"/' go/util.go > go/util.go.tmp \
+		&& mv go/util.go.tmp go/util.go
+	@grep -q '^const Version = "$(V)"' go/util.go || \
+	  (echo "bump-go: failed to set Version in go/util.go" && exit 1)
+	@echo "go/util.go now declares $(V) — commit it, then: make publish"
+
+# Dispatch the release. Publishes what is missing, then writes both tags.
+publish:
+	@command -v gh >/dev/null || (echo "publish: needs the gh CLI" && exit 1)
+	@test "`git rev-parse --abbrev-ref HEAD`" = "main" || \
+	  (echo "publish: releases come from main" && exit 1)
+	@git diff --quiet && git diff --cached --quiet || \
+	  (echo "publish: working tree is dirty" && exit 1)
+	git fetch origin main
+	@test "`git rev-parse HEAD`" = "`git rev-parse origin/main`" || \
+	  (echo "publish: local main differs from origin/main — push or pull first" && exit 1)
+	gh workflow run publish.yml --ref main \
+	  -f npm=$(NPM) -f go=$(GO) -f dry_run=false -f expect_sha=`git rev-parse HEAD`
+	@echo "dispatched; watch: gh run list --workflow=publish.yml"
+
+# Rehearse the same run: every guard, both builds, both suites, no release.
+# It cannot test npm's trusted publisher — see publish.yml's header.
+publish-rehearse:
+	@command -v gh >/dev/null || (echo "publish-rehearse: needs the gh CLI" && exit 1)
+	@test "`git rev-parse --abbrev-ref HEAD`" = "main" || \
+	  (echo "publish-rehearse: dispatches run from main" && exit 1)
+	gh workflow run publish.yml --ref main \
+	  -f npm=$(NPM) -f go=$(GO) -f dry_run=true
+	@echo "dispatched (rehearsal); watch: gh run list --workflow=publish.yml"
+
+# RECOVERY ONLY — NOT THE RELEASE PATH. `make publish` above is. This target
+# publishes over a local token, which bypasses OIDC and lands the package with
+# NO PROVENANCE ATTESTATION (that is how 0.5.4 went out). It also bumps and
+# commits, which the workflow deliberately does not. Reach for it only when
+# the workflow route is broken and a release cannot wait, and expect the
+# resulting version to be the odd one out on npm.
+#
 # Order: bump -> commit -> tag locally -> npm publish -> push commit+tag -> gh release.
 # npm publish runs before the git push so a failed publish leaves nothing public and
 # a retry can succeed (the local commit/tag are still there for re-use).
@@ -78,7 +137,13 @@ publish-npm: build-ts test-ts
 		git push origin main ts/v$$V && \
 		if command -v gh >/dev/null 2>&1; then gh release create ts/v$$V --title "ts/v$$V" --notes "npm package release v$$V"; fi
 
-# Publish Go module. Defaults to a patch bump on the Version const in go/util.go; override with V=x.y.z.
+# RECOVERY ONLY — NOT THE RELEASE PATH, for the same reasons as publish-npm,
+# and with one of its own: pushing the module tag from here releases the Go
+# half on its own, which is exactly the drift `make publish` exists to stop.
+# proxy.golang.org caches the version immutably, so a tag pushed in error
+# cannot be withdrawn. Use `make bump-go V=x.y.z` plus `make publish`.
+#
+# Defaults to a patch bump on the Version const in go/util.go; override with V=x.y.z.
 publish-go: test-go
 	@V=$${V:-$$(awk -F\" '/^const Version = "/{split($$2,a,"."); printf "%d.%d.%d", a[1], a[2], a[3]+1}' go/util.go)}; \
 		test -n "$$V" || (echo "Cannot derive next version; use: make publish-go V=x.y.z" && exit 1); \

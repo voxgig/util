@@ -1,14 +1,15 @@
-# Releases @voxgig/util: publishes to npm from `ts/` AND writes the git tag.
+# Releases @voxgig/util: publishes to npm from `ts/` AND writes both git tags.
 #
 # Adapted from voxgig/struct's publish.yml, the closest sibling — a
 # multi-language library with no committed lockfile and per-port tags — which
-# in turn carries voxgig/sdkgen's reasoning for every guard below.
+# in turn carries voxgig/sdkgen's reasoning for every guard below. The
+# two-artifact shape follows voxgig/model and voxgig/apidef.
 #
 # ONE FILE, BECAUSE NPM ALLOWS EXACTLY ONE. A trusted publisher is registered
 # on npmjs.com against a single workflow FILENAME, and every @voxgig package
 # is registered against `publish.yml` or `release.yml`. The name itself is
 # arbitrary, but only the ONE registered file can publish, so anything that
-# must accompany a publish has to live inside it. Here that is the tag.
+# must accompany a publish has to live inside it. Here that is both tags.
 #
 # A second workflow cannot publish whatever permissions it holds; npm rejects
 # the exchange and reports it as
@@ -16,6 +17,38 @@
 #   npm error 404 Not Found - PUT https://registry.npmjs.org/...
 #
 # — a 404, not a 403, so as not to leak whether the package exists.
+#
+# TWO ARTIFACTS, RELEASED TOGETHER.
+#
+#   npm   ts/package.json "version"      -> tag ts/v<version>
+#   go    go/util.go      const Version  -> tag go/v<Version>
+#
+# THE GO PORT USED TO BE ABSENT FROM THIS FILE, on the reasoning that `go/`
+# has no registry and no credential, so releasing it is only pushing a tag and
+# `make publish-go` could do that from a laptop. That was true and still
+# missed the point: a tag pushed by hand is a release that no run gates and
+# nothing records, and it let the two ports drift apart one convenience at a
+# time. Releasing them from one run is what keeps the TypeScript canon and its
+# Go port in step, which is the property this repository actually cares about.
+# Both halves now go out of the same dispatch, or neither does.
+#
+# THE TWO VERSION SERIES ARE INDEPENDENT ON PURPOSE. npm is at 0.5.x while the
+# Go module is at 0.1.x. "Parity" here means the two are RELEASED TOGETHER and
+# kept in architectural step — NOT that they carry the same number. Syncing
+# the numbers buys nothing and, once either passes 1.x, would force the module
+# path to carry a major suffix (github.com/voxgig/util/go/v2) and rewrite
+# every consumer's imports: a deliberate one-time migration, never a release
+# chore.
+#
+# GO MODULES HAVE NO REGISTRY STEP: THE TAG IS THE RELEASE. proxy.golang.org
+# and the sum database cache a module version immutably, so a wrong go/vX.Y.Z
+# cannot be fixed by re-pushing it — moving or deleting the tag reaches users
+# as a checksum mismatch, a security error rather than a missing version.
+# Bump to the next patch instead, or `retract` in a new version. This is why
+# the Go half is gated on its own build, vet, gofmt and test run below even
+# though ci.yml already covers pushes and pull requests: a dispatch can
+# release a commit whose Go half that exact toolchain never exercised, and the
+# tag cannot be taken back.
 #
 # THE PACKAGE HAS NEVER PUBLISHED OVER OIDC, so the registration is the first
 # thing to get wrong. 0.5.4 went out from a laptop over a personal token: it
@@ -28,20 +61,13 @@
 # npm registers a publisher only against a package that already EXISTS, which
 # @voxgig/util does, so there is nothing to bootstrap. Until that command has
 # run, a dispatch here fails the exchange as exactly the 404 above: the tests
-# pass, the tarball packs, the PUT is rejected. The registration is what to
+# run, the tarball packs, the PUT is rejected. The registration is what to
 # check, and the package's npm settings page is where to check it. A
 # `dry_run` here cannot: see DRY RUN below.
 #
-# THE GO PORT IS NOT IN THIS FILE, and that is not an omission. `go/` has no
-# registry and no credential: the module proxy resolves
-# `github.com/voxgig/util/go` from the `go/v<version>` tag in this repository
-# and nothing else, so publishing it is pushing a tag. `make publish-go`
-# stays the way to cut one. Only the npm side needs OIDC, so only the npm
-# side is here.
-#
 # TWO JOBS, BECAUSE THEY NEED DIFFERENT PRIVILEGES.
 #
-#   publish  id-token: write, contents: READ. Runs the install, the build and
+#   publish  id-token: write, contents: READ. Runs the install, the builds and
 #            the tests — i.e. dependency lifecycle scripts and project code.
 #   tag      contents: write. Runs git and nothing else.
 #
@@ -55,22 +81,23 @@
 #
 # TWO WAYS IN:
 #
-#   workflow_dispatch  the normal path. Publishes if missing, then tags.
+#   workflow_dispatch  the normal path. Publishes what is missing, then tags
+#                      both halves. `npm: false` or `go: false` releases one.
 #   push: tags ts/v*   the manual path, for a tag pushed by hand. Publishes
-#                      only; the tag job does not run.
+#                      the npm half only; the tag job does not run, and the Go
+#                      module is not tagged. Prefer the dispatch.
 #
-# A `*` in a ref filter does not cross `/`, so a `go/v*` tag pushed by
-# `make publish-go` never starts an npm release of whatever ts/package.json
-# happens to say.
+# A `*` in a ref filter does not cross `/`, so a `go/v*` tag pushed by hand
+# never starts an npm release of whatever ts/package.json happens to say.
 #
 # DRY RUN. `dry_run: true` on a dispatch rehearses a release without making
-# one: every guard and every test runs, the artifact is packed with
-# `--dry-run`, nothing is published and nothing is tagged.
+# one: every guard, both builds and both test suites run, the npm artifact is
+# packed with `--dry-run`, nothing is published and neither tag is written.
 #
 # IT DOES NOT TEST THE TRUSTED PUBLISHER, and must not be sold as if it did.
 # `npm publish --dry-run` packs the tarball and stops; the OIDC exchange only
 # happens inside a real publish. A rehearsal therefore proves the guards, the
-# build, the tests and the tarball, and says nothing about whether the
+# builds, the tests and the tarball, and says nothing about whether the
 # registration above took. Check that on the package's npm settings page.
 #
 # A REHEARSAL IS NOT A WEAKER CREDENTIAL, so it does not run off `main`
@@ -79,29 +106,24 @@
 # dispatch runs the workflow and the project code AT THE REF IT IS GIVEN. An
 # off-main rehearsal would run that branch's install, build and test scripts
 # beside a credential that can mint an npm publishing token, and skipping the
-# named publish step is not an authorization boundary. voxgig/struct exempts
-# its rehearsal from the main check because minting and revoking a real
-# crates.io token is the only way to test THAT registry's publisher; npm's
-# dry run mints nothing, so the exemption would buy nothing here and is not
-# carried over.
+# named publish step is not an authorization boundary.
 #
 # For a boundary stronger than a step guard, put this job in a GitHub
 # environment with a main-only deployment branch rule and register the npm
 # publisher against that environment. The guard below lives in a file the
 # dispatching ref controls; an environment rule does not.
 #
-# TAGS ARE `ts/v<version>`, MATCHING THE PORT. The repository released under
-# a bare `v<version>` up to 0.5.2; 0.5.3 and 0.5.4 went out as `ts/v0.5.3`
-# and `ts/v0.5.4`, alongside `go/v0.1.x` for the Go port. This file continues
-# the current scheme. THE BARE TAGS STAY: they are what those nineteen
-# releases were published under, and rewriting a released marker to tidy a
-# scheme would be worse than the inconsistency.
+# TAGS ARE `ts/v<version>` AND `go/v<Version>`, EACH MATCHING ITS PORT. The
+# repository released under a bare `v<version>` up to 0.5.2; 0.5.3 onwards go
+# out as `ts/v<version>` alongside `go/v0.1.x` for the Go port. THE BARE TAGS
+# STAY: they are what those nineteen releases were published under, and
+# rewriting a released marker to tidy a scheme would be worse than the
+# inconsistency.
 #
 # VERSION BUMPS ARE NOT AUTOMATED, deliberately. Nothing here commits. It
-# reads the version already on the branch and releases exactly that, so the
-# bump stays a reviewable diff and the release stays a button.
-#
-#   ts/package.json "version" -> tag ts/v<version>
+# reads the versions already on the branch and releases exactly those, so the
+# bump stays a reviewable diff and the release stays a button. `make bump-go`
+# edits the Go constant and stops; npm's lives in ts/package.json.
 #
 # Renaming this file breaks publishing until the npm-side trusted publisher
 # is updated to match, so a rename and the `npm trust` re-run go together. Do
@@ -117,6 +139,14 @@ on:
     tags: ['ts/v*']
   workflow_dispatch:
     inputs:
+      npm:
+        description: 'Publish the npm package and tag ts/v<version>'
+        type: boolean
+        default: true
+      go:
+        description: 'Tag the Go module go/v<Version>'
+        type: boolean
+        default: true
       expect_sha:
         description: 'Optional: refuse unless main is still at this commit'
         type: string
@@ -131,7 +161,7 @@ env:
 
 jobs:
   publish:
-    name: npm publish (ts)
+    name: npm publish (ts) + verify go
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -142,7 +172,8 @@ jobs:
       contents: read
 
     outputs:
-      version: ${{ steps.versions.outputs.version }}
+      npm_version: ${{ steps.versions.outputs.npm_version }}
+      go_version: ${{ steps.versions.outputs.go_version }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -154,14 +185,44 @@ jobs:
           node-version: 24.x
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Resolve the version being released
+      # Same pin and same go-version as ci.yml, so the toolchain that gates
+      # the tag is the one that gates every push.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.23'
+
+      # BOTH VERSIONS ARE RESOLVED ON EVERY PATH, including a push and a
+      # one-sided dispatch. Reading the half that is not being released costs
+      # nothing and keeps the run's log a complete record of what the commit
+      # declared.
+      #
+      # The Go constant is `Version`, not the siblings' `VERSION`: go/util.go
+      # exports it as documented API, so it carries Go's own naming rather
+      # than model's and apidef's screaming case. The anchored pattern below
+      # is what keeps that difference from silently matching nothing.
+      - name: Resolve the versions being released
         id: versions
         run: |
           set -euo pipefail
-          VERSION="$(node -p "require('./ts/package.json').version")"
-          test -n "$VERSION" || { echo "::error::could not read ts/package.json version"; exit 1; }
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "$VERSION -> tag ts/v$VERSION"
+          NPM_VERSION="$(node -p "require('./ts/package.json').version")"
+          GO_VERSION="$(sed -n 's/^const Version = "\(.*\)"$/\1/p' go/util.go)"
+
+          test -n "$NPM_VERSION" || { echo "::error::could not read ts/package.json version"; exit 1; }
+          test -n "$GO_VERSION"  || { echo "::error::could not read Version from go/util.go"; exit 1; }
+
+          echo "npm_version=$NPM_VERSION" >> "$GITHUB_OUTPUT"
+          echo "go_version=$GO_VERSION"   >> "$GITHUB_OUTPUT"
+          echo "npm: $NPM_VERSION -> tag ts/v$NPM_VERSION"
+          echo "go:  $GO_VERSION -> tag go/v$GO_VERSION"
+
+      # A DISPATCH THAT RELEASES NEITHER HALF IS A MISTAKE, not a no-op worth
+      # a green tick. Without this the run installs, builds, tests and then
+      # reports success having published and tagged nothing.
+      - name: A dispatch must release something
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.npm && !inputs.go }}
+        run: |
+          echo "::error::npm and go are both false; nothing to release"
+          exit 1
 
       # RELEASES COME FROM main, INCLUDING FROM THE BUTTON. `gh workflow run
       # --ref` accepts any branch or tag, so without this the Actions UI or a
@@ -205,10 +266,10 @@ jobs:
       - name: The pushed tag must match the package version
         if: ${{ github.event_name == 'push' }}
         env:
-          PKG_VERSION: ${{ steps.versions.outputs.version }}
+          NPM_VERSION: ${{ steps.versions.outputs.npm_version }}
         run: |
           set -euo pipefail
-          WANT="ts/v$PKG_VERSION"
+          WANT="ts/v$NPM_VERSION"
           if [ "$GITHUB_REF_NAME" != "$WANT" ]; then
             echo "::error::tag $GITHUB_REF_NAME does not match ts/package.json ($WANT)"
             exit 1
@@ -219,32 +280,59 @@ jobs:
       # not an error — which is what lets a partly-failed release be
       # re-dispatched.
       #
+      # CHECKED PER HALF, so a Go-only release is not blocked by the npm tag
+      # of a version already out, and the reverse. Each half names the file to
+      # bump, because "bump the version" is ambiguous once there are two.
+      #
       # A REHEARSAL WARNS WHERE A RELEASE STOPS. This guard and the registry
       # one below ask "does the world already contain this version", and at
       # the moment you most want to rehearse — this file just changed, the
-      # manifest still says the version last released — the honest answer is
+      # manifests still say the versions last released — the honest answer is
       # yes. Failing there would mean no rehearsal without a bump first,
       # which is exactly the friction that stops people rehearsing at all.
       - name: Refuse a tag that points at a different commit
         if: ${{ github.event_name == 'workflow_dispatch' }}
         env:
-          PKG_VERSION: ${{ steps.versions.outputs.version }}
+          INPUT_NPM: ${{ inputs.npm }}
+          INPUT_GO: ${{ inputs.go }}
+          NPM_VERSION: ${{ steps.versions.outputs.npm_version }}
+          GO_VERSION: ${{ steps.versions.outputs.go_version }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
-          TAG="ts/v$PKG_VERSION"
           HEAD_SHA="$(git rev-parse HEAD)"
-          AT="$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" 2>/dev/null || true)"
-          if [ -n "$AT" ] && [ "$AT" != "$HEAD_SHA" ]; then
-            MSG="tag $TAG already exists on $AT, not this commit — bump ts/package.json"
+          fail=0
+
+          check() {
+            tag="$1"; what="$2"
+            at="$(git rev-parse -q --verify "refs/tags/$tag^{commit}" 2>/dev/null || true)"
+            if [ -z "$at" ]; then
+              echo "$tag does not exist yet"
+              return 0
+            fi
+            # Branch, rather than warn and then fall through to the
+            # "points here" line: under a rehearsal that line would follow
+            # the warning and flatly contradict it.
+            if [ "$at" = "$HEAD_SHA" ]; then
+              echo "$tag already points here; nothing to create"
+              return 0
+            fi
+            MSG="tag $tag already exists on $at, not this commit — bump $what"
             if [ "${DRY_RUN:-false}" = "true" ]; then
               echo "::warning::$MSG (rehearsal: a real release stops here)"
-            else
-              echo "::error::$MSG"
-              exit 1
+              return 0
             fi
+            echo "::error::$MSG"
+            return 1
+          }
+
+          if [ "$INPUT_NPM" = "true" ]; then
+            check "ts/v$NPM_VERSION" "ts/package.json" || fail=1
           fi
-          if [ -n "$AT" ]; then echo "$TAG already points here; nothing to create"; fi
+          if [ "$INPUT_GO" = "true" ]; then
+            check "go/v$GO_VERSION" "Version in go/util.go" || fail=1
+          fi
+          exit $fail
 
       # `npm install`, NOT `npm ci`. This repository gitignores
       # package-lock.json (.gitignore:110) and commits no lockfile in either
@@ -260,14 +348,51 @@ jobs:
         working-directory: ts
         run: npm install
 
-      - name: Build and test
+      - name: Build and test TypeScript
         working-directory: ts
         run: |
           npm run build
           npm test
 
+      # ci.yml covers Go on pushes and pull requests, but a dispatch can
+      # release a commit whose Go half was never exercised by this exact
+      # toolchain, and a module tag is immutable once the proxy has seen it —
+      # so gate on it here too. Runs whenever the Go half is being released.
+      #
+      # `gofmt -l` LISTS unformatted files and still exits 0, so the bare
+      # command gates nothing; test for empty output instead.
+      - name: Build and test Go
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.go }}
+        working-directory: go
+        run: |
+          set -euo pipefail
+          go version
+          test -z "$(gofmt -l .)" || { gofmt -l .; echo "::error::gofmt reports unformatted files"; exit 1; }
+          go vet ./...
+          go build ./...
+          go test ./... -count=1
+
+      # THE TAG A GO CONSUMER RESOLVES MUST MATCH WHAT THE PACKAGE SAYS ABOUT
+      # ITSELF. go/util.go exports Version as API, so a tag written from a
+      # stale constant ships a module that misreports its own version — and
+      # the proxy caches that permanently. The constant is the input to the
+      # tag name, so this cannot disagree by construction; it is here to catch
+      # a hand-edited tag name or a future refactor that moves the constant.
+      - name: The Go module must declare the version being tagged
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.go }}
+        env:
+          GO_VERSION: ${{ steps.versions.outputs.go_version }}
+        run: |
+          set -euo pipefail
+          grep -q "^const Version = \"$GO_VERSION\"\$" go/util.go || {
+            echo "::error::go/util.go does not declare Version = \"$GO_VERSION\""
+            exit 1
+          }
+          echo "go/util.go declares $GO_VERSION"
+
       # Trusted publishing requires npm >= 11.5.1.
       - name: Use a trusted-publishing capable npm
+        if: ${{ github.event_name == 'push' || inputs.npm }}
         run: npm install -g npm@latest
 
       # THE REGISTRY IS THE SOURCE OF TRUTH FOR "IS THIS RELEASED", not the
@@ -277,11 +402,12 @@ jobs:
       # the previously published versions" before the tag job ever runs.
       - name: Is this version already on npm?
         id: registry
+        if: ${{ github.event_name == 'push' || inputs.npm }}
         env:
-          PKG_VERSION: ${{ steps.versions.outputs.version }}
+          NPM_VERSION: ${{ steps.versions.outputs.npm_version }}
         run: |
           set -euo pipefail
-          V="$PKG_VERSION"
+          V="$NPM_VERSION"
           if npm view "@voxgig/util@$V" version >/dev/null 2>&1; then
             echo "published=true" >> "$GITHUB_OUTPUT"
             echo "$V is already on npm — skipping publish"
@@ -309,14 +435,18 @@ jobs:
       # legitimate recovery, which is a re-dispatch after the tag job failed
       # on a version this workflow published, gitHead and all. The sibling
       # repositories warn here; this is a deliberate divergence.
+      #
+      # Gated on the npm half being requested, so a Go-only release is not
+      # blocked by an npm version published from an earlier commit that this
+      # run is not re-releasing.
       - name: A published version must come from this commit
-        if: ${{ steps.registry.outputs.published == 'true' }}
+        if: ${{ steps.registry.outputs.published == 'true' && (github.event_name == 'push' || inputs.npm) }}
         env:
-          PKG_VERSION: ${{ steps.versions.outputs.version }}
+          NPM_VERSION: ${{ steps.versions.outputs.npm_version }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
-          V="$PKG_VERSION"
+          V="$NPM_VERSION"
           GH="$(npm view "@voxgig/util@$V" gitHead 2>/dev/null || true)"
           if [ -z "$GH" ]; then
             MSG="npm records no gitHead for $V; nothing ties that published artifact to this commit, so it cannot be tagged — bump ts/package.json"
@@ -341,13 +471,13 @@ jobs:
       # Publish BEFORE tagging (the tag job `needs` this one), so a tag only
       # ever exists for a release that reached the registry.
       - name: Publish to npm
-        if: ${{ steps.registry.outputs.published == 'false' && !inputs.dry_run }}
+        if: ${{ (github.event_name == 'push' || inputs.npm) && steps.registry.outputs.published == 'false' && !inputs.dry_run }}
         working-directory: ts
         env:
-          PKG_VERSION: ${{ steps.versions.outputs.version }}
+          NPM_VERSION: ${{ steps.versions.outputs.npm_version }}
         run: |
           set -euo pipefail
-          V="$PKG_VERSION"
+          V="$NPM_VERSION"
           # A PRERELEASE MUST NOT BECOME `latest`. `npm publish` defaults to
           # the latest dist-tag, so publishing 1.2.3-beta.1 that way hands it
           # to every unpinned install.
@@ -362,15 +492,20 @@ jobs:
       # trusted publisher works — that exchange happens inside a real
       # `npm publish` — so this checks the artifact, not the credential.
       - name: Rehearse the npm package
-        if: ${{ inputs.dry_run }}
+        if: ${{ inputs.dry_run && inputs.npm }}
         working-directory: ts
         run: npm publish --access public --dry-run
 
   # Runs git and nothing else. No npm install, no project code — so the
   # repository-write credential is never in scope while third-party code
   # runs.
+  #
+  # BOTH TAGS ARE WRITTEN HERE, in one job, after the publish job succeeded.
+  # That ordering is the whole point: the Go tag IS the Go release, so it must
+  # not exist for a run whose npm half failed, and neither tag may exist
+  # before the registry has the artifact.
   tag:
-    name: tag (ts)
+    name: tag (ts + go)
     needs: publish
     if: ${{ github.event_name == 'workflow_dispatch' && !inputs.dry_run }}
     runs-on: ubuntu-latest
@@ -384,12 +519,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Tag the release
+      - name: Tag the npm release
+        if: ${{ inputs.npm }}
         env:
-          PKG_VERSION: ${{ needs.publish.outputs.version }}
+          NPM_VERSION: ${{ needs.publish.outputs.npm_version }}
         run: |
           set -euo pipefail
-          TAG="ts/v$PKG_VERSION"
+          TAG="ts/v$NPM_VERSION"
           HEAD_SHA="$(git rev-parse HEAD)"
 
           # EXISTENCE IS NOT ENOUGH. `git rev-parse --verify` only asks
@@ -398,6 +534,32 @@ jobs:
           # as the idempotent case would leave a green run with an npm
           # artifact from THIS commit and a release tag on a different one.
           # Dereference and compare.
+          AT="$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" 2>/dev/null || true)"
+          if [ -n "$AT" ]; then
+            if [ "$AT" != "$HEAD_SHA" ]; then
+              echo "::error::$TAG exists on $AT, not this commit ($HEAD_SHA)"
+              exit 1
+            fi
+            echo "$TAG already points here — nothing to do" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git tag "$TAG"
+          git push origin "refs/tags/$TAG"
+          echo "pushed $TAG" >> "$GITHUB_STEP_SUMMARY"
+
+      # THE GO RELEASE ITSELF. There is no upload to follow this: once
+      # proxy.golang.org has resolved the tag, the version is public and
+      # immutable. Same dereference-and-compare as the npm tag, and worse to
+      # get wrong.
+      - name: Tag the Go module
+        if: ${{ inputs.go }}
+        env:
+          GO_VERSION: ${{ needs.publish.outputs.go_version }}
+        run: |
+          set -euo pipefail
+          TAG="go/v$GO_VERSION"
+          HEAD_SHA="$(git rev-parse HEAD)"
+
           AT="$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" 2>/dev/null || true)"
           if [ -n "$AT" ]; then
             if [ "$AT" != "$HEAD_SHA" ]; then

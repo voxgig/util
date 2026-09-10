@@ -42,8 +42,10 @@ func jsTruthy(v any) bool {
 	}
 }
 
-// Version is the released version of the Go module. It is rewritten by
-// `make publish-go V=x.y.z` to match the git tag (go/vx.y.z).
+// Version is the released version of the Go module. Set it with
+// `make bump-go V=x.y.z`, commit that diff, then `make publish` — which
+// releases this module (as the tag go/vx.y.z) and the npm package together
+// in one run. The npm package carries its own, independent version series.
 const Version = "0.1.5"
 
 // Camelify converts a kebab-case string (or slice of strings) to PascalCase.
