@@ -512,10 +512,39 @@ jobs:
       # A rehearsal packs the tarball and stops. It cannot prove npm's
       # trusted publisher works — that exchange happens inside a real
       # `npm publish` — so this checks the artifact, not the credential.
+      #
+      # `npm publish --dry-run` STILL TALKS TO THE REGISTRY, which made the
+      # rehearsal unusable in the one state it is most wanted. Rehearsing a
+      # change to THIS FILE means running it against the versions already on
+      # the branch, which are normally the versions last released — and there
+      # npm fails the whole run with
+      #
+      #   npm error You cannot publish over the previously published
+      #   versions: 0.5.8.
+      #
+      # The tag guard and the gitHead guard above were both deliberately
+      # softened to warnings for exactly that state; this step then hard-
+      # failed for the same reason and undid the point of it, leaving no
+      # rehearsal without a version bump first.
+      #
+      # So when the version is already out, pack instead of pretending to
+      # publish: `npm pack --dry-run` builds and lists the identical tarball
+      # and never asks the registry to accept it. The artifact is what a
+      # rehearsal can check, and it is still checked.
       - name: Rehearse the npm package
         if: ${{ inputs.dry_run && inputs.npm }}
         working-directory: ts
-        run: npm publish --access public --dry-run
+        env:
+          ALREADY_PUBLISHED: ${{ steps.registry.outputs.published }}
+          NPM_VERSION: ${{ steps.versions.outputs.npm_version }}
+        run: |
+          set -euo pipefail
+          if [ "$ALREADY_PUBLISHED" = "true" ]; then
+            echo "::warning::$NPM_VERSION is already on npm, so a publish rehearsal would fail at the registry rather than tell you anything; packing the tarball instead (a real release stops at the guards above)"
+            npm pack --dry-run
+          else
+            npm publish --access public --dry-run
+          fi
 
   # Runs git and gh, and installs nothing. No npm install, no project code —
   # so the repository-write credential is never in scope while third-party
