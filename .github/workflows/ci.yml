@@ -30,6 +30,31 @@ jobs:
       - run: npm run build
       - run: npm test
 
+      # ts/dist and ts/dist-test are COMMITTED, so a build must not change
+      # them. For a long time ts/dist/util.js.map did not: `make clean && make
+      # all` left a dirty tree, bd1a2a0 refreshed the map on its own rather
+      # than fix it, and the drift came straight back. Nothing caught that,
+      # because nothing compared the committed output against a fresh build.
+      #
+      # The build above already ran, so this only reads the result. `git
+      # status` reports the whole repository even from ts/, which is why no
+      # working-directory override is needed here.
+      #
+      # This is also why typescript is pinned exactly rather than by caret
+      # range: with a range, a tsc patch release could change the emitted
+      # output and turn this red with no source edit behind it.
+      - name: Committed build output must match a clean build
+        run: |
+          set -euo pipefail
+          DIRTY="$(git status --porcelain)"
+          if [ -n "$DIRTY" ]; then
+            echo "::error::a clean build changed committed files; rebuild and commit ts/dist and ts/dist-test"
+            echo "$DIRTY"
+            git --no-pager diff --stat
+            exit 1
+          fi
+          echo "committed build output matches a clean build"
+
   go-build-and-test:
     runs-on: ubuntu-latest
 
