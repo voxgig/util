@@ -69,11 +69,26 @@
 #
 #   publish  id-token: write, contents: READ. Runs the install, the builds and
 #            the tests — i.e. dependency lifecycle scripts and project code.
-#   tag      contents: write. Runs git and nothing else.
+#   tag      contents: write. Runs git and the gh CLI, and installs nothing.
 #
 # Keeping them in one job would hand a repository-write credential to every
 # dependency postinstall script that runs during the install, because
-# checkout persists its token into the git config for the whole job.
+# checkout persists its token into the git config for the whole job. What
+# matters is that no third-party code runs in the job holding the write
+# credential; git and gh are the workflow's own tools, not the project's.
+#
+# EACH HALF WRITES A TAG AND A GITHUB RELEASE. The Release is not the release
+# — npm has the package and the tag is the Go module — it is the human-facing
+# marker, and one used to exist for every version: `gh release create` was in
+# the Makefile's local publish path, and got left behind when publishing moved
+# to OIDC. ts/v0.5.5 through ts/v0.5.8 and go/v0.1.6 are tags with nothing on
+# the releases page. The tag and the Release are therefore ensured
+# SEPARATELY, never nested, so a run that tagged and then failed can be
+# re-dispatched to finish the job.
+#
+# A HAND-PUSHED TAG GETS NO RELEASE, because the tag job does not run on the
+# push path at all — see TWO WAYS IN. That is one more reason to prefer the
+# dispatch.
 #
 # A ref pushed with GITHUB_TOKEN does NOT start another workflow run (GitHub
 # suppresses that so workflows cannot trigger themselves), so the tag job
@@ -502,16 +517,16 @@ jobs:
         working-directory: ts
         run: npm publish --access public --dry-run
 
-  # Runs git and nothing else. No npm install, no project code — so the
-  # repository-write credential is never in scope while third-party code
-  # runs.
+  # Runs git and gh, and installs nothing. No npm install, no project code —
+  # so the repository-write credential is never in scope while third-party
+  # code runs.
   #
-  # BOTH TAGS ARE WRITTEN HERE, in one job, after the publish job succeeded.
-  # That ordering is the whole point: the Go tag IS the Go release, so it must
-  # not exist for a run whose npm half failed, and neither tag may exist
-  # before the registry has the artifact.
+  # BOTH TAGS AND BOTH RELEASES ARE WRITTEN HERE, in one job, after the
+  # publish job succeeded. That ordering is the whole point: the Go tag IS the
+  # Go release, so it must not exist for a run whose npm half failed, and
+  # neither tag may exist before the registry has the artifact.
   tag:
-    name: tag (ts + go)
+    name: tag + release (ts + go)
     needs: publish
     if: ${{ github.event_name == 'workflow_dispatch' && !inputs.dry_run }}
     runs-on: ubuntu-latest
@@ -525,13 +540,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Tag the npm release
+      - name: Tag and release the npm package
         if: ${{ inputs.npm }}
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_VERSION: ${{ needs.publish.outputs.npm_version }}
         run: |
           set -euo pipefail
           TAG="ts/v$NPM_VERSION"
+          NOTES="npm package release v$NPM_VERSION"
           HEAD_SHA="$(git rev-parse HEAD)"
 
           # EXISTENCE IS NOT ENOUGH. `git rev-parse --verify` only asks
@@ -541,40 +558,76 @@ jobs:
           # artifact from THIS commit and a release tag on a different one.
           # Dereference and compare.
           AT="$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" 2>/dev/null || true)"
-          if [ -n "$AT" ]; then
-            if [ "$AT" != "$HEAD_SHA" ]; then
-              echo "::error::$TAG exists on $AT, not this commit ($HEAD_SHA)"
-              exit 1
-            fi
-            echo "$TAG already points here — nothing to do" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+          if [ -n "$AT" ] && [ "$AT" != "$HEAD_SHA" ]; then
+            echo "::error::$TAG exists on $AT, not this commit ($HEAD_SHA)"
+            exit 1
           fi
-          git tag "$TAG"
-          git push origin "refs/tags/$TAG"
-          echo "pushed $TAG" >> "$GITHUB_STEP_SUMMARY"
+
+          # NO `exit 0` IN THE ALREADY-TAGGED BRANCH. Returning early here is
+          # what left ts/v0.5.5 onwards with tags and no Release: the tag is
+          # only half the marker, and the Release below has to be reachable
+          # when the tag is already in place.
+          if [ -n "$AT" ]; then
+            echo "$TAG already points here — tag not re-created" >> "$GITHUB_STEP_SUMMARY"
+          else
+            git tag "$TAG"
+            git push origin "refs/tags/$TAG"
+            echo "pushed $TAG" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # A PRERELEASE MUST NOT READ AS THE CURRENT RELEASE, the same
+          # reasoning as the npm dist-tag.
+          case "$NPM_VERSION" in
+            *-*) PRE=--prerelease ;;
+            *)   PRE= ;;
+          esac
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists — nothing to do" >> "$GITHUB_STEP_SUMMARY"
+          else
+            # --verify-tag: refuse to invent a release for a tag that is not
+            # actually there, rather than creating the tag as a side effect.
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes "$NOTES" $PRE
+            echo "created release $TAG" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       # THE GO RELEASE ITSELF. There is no upload to follow this: once
       # proxy.golang.org has resolved the tag, the version is public and
       # immutable. Same dereference-and-compare as the npm tag, and worse to
       # get wrong.
-      - name: Tag the Go module
+      - name: Tag and release the Go module
         if: ${{ inputs.go }}
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GO_VERSION: ${{ needs.publish.outputs.go_version }}
         run: |
           set -euo pipefail
           TAG="go/v$GO_VERSION"
+          NOTES="Go module release v$GO_VERSION"
           HEAD_SHA="$(git rev-parse HEAD)"
 
           AT="$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" 2>/dev/null || true)"
-          if [ -n "$AT" ]; then
-            if [ "$AT" != "$HEAD_SHA" ]; then
-              echo "::error::$TAG exists on $AT, not this commit ($HEAD_SHA)"
-              exit 1
-            fi
-            echo "$TAG already points here — nothing to do" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+          if [ -n "$AT" ] && [ "$AT" != "$HEAD_SHA" ]; then
+            echo "::error::$TAG exists on $AT, not this commit ($HEAD_SHA)"
+            exit 1
           fi
-          git tag "$TAG"
-          git push origin "refs/tags/$TAG"
-          echo "pushed $TAG" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "$AT" ]; then
+            echo "$TAG already points here — tag not re-created" >> "$GITHUB_STEP_SUMMARY"
+          else
+            git tag "$TAG"
+            git push origin "refs/tags/$TAG"
+            echo "pushed $TAG" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          case "$GO_VERSION" in
+            *-*) PRE=--prerelease ;;
+            *)   PRE= ;;
+          esac
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists — nothing to do" >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes "$NOTES" $PRE
+            echo "created release $TAG" >> "$GITHUB_STEP_SUMMARY"
+          fi
