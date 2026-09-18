@@ -181,3 +181,11 @@ pattern.
 Workflow definitions live in `.github/workflows/ci.yml`. CI builds and tests
 the TypeScript package (Node 24 + latest) and the Go port on every push and
 pull request to `main`.
+
+## Source code comments
+
+Follow [COMMENT-POLICY.md](COMMENT-POLICY.md): comments are sparse and terse,
+only for intricate or surprising code. Names carry intent; documents carry
+requirements. Run `make comments comments-test` after editing source.
+
+Durable implementation rationale is in [COMMENT-NOTES.md](COMMENT-NOTES.md).

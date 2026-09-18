@@ -9,17 +9,7 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const shape_1 = require("shape");
 const __1 = require("../");
-// ---------------------------------------------------------------------------
-// Shared cross-language parity specs (top-level test/*.tsv).
-//
-// Each row is (name, args, expected). The same fixtures drive the Go suite, so
-// a behavioural drift between the two implementations fails one of them. `args`
-// is the logical argument list; the adapter below maps it to a real call.
-// ---------------------------------------------------------------------------
 const SPEC_DIR = node_path_1.default.join(__dirname, '..', '..', 'test');
-// Canonical JSON: object keys sorted recursively, undefined normalised to null,
-// so two structurally equal values compare equal regardless of key order (and
-// so Go's key-sorted json.Marshal output lines up with the same fixtures).
 function sortKeys(v) {
     if (Array.isArray(v)) {
         return v.map(sortKeys);
@@ -38,7 +28,6 @@ function loadSpec(name) {
     const text = node_fs_1.default.readFileSync(node_path_1.default.join(SPEC_DIR, name + '.tsv'), 'utf8');
     const rows = [];
     const lines = text.split('\n');
-    // Line 0 is the header (name/args/expected).
     for (let i = 1; i < lines.length; i++) {
         const line = lines[i];
         if ('' === line.trim() || line.startsWith('#')) {
@@ -88,11 +77,8 @@ const ADAPTERS = {
         }
     });
     (0, node_test_1.test)('dive mapper form', () => {
-        // Mapper as the 2nd argument returns a keyed object.
         node_assert_1.default.deepStrictEqual((0, __1.dive)({ a: { b: 1 }, c: { d: 2 } }, (path, leaf) => [path.join('.'), leaf]), { 'a.b': 1, 'c.d': 2 });
-        // A null key omits the entry.
         node_assert_1.default.deepStrictEqual((0, __1.dive)({ a: { b: 1 }, c: { d: 2 } }, (path, leaf) => ['b' === path[1] ? null : path.join('.'), leaf]), { 'c.d': 2 });
-        // Mapper as the 3rd argument (with an explicit depth).
         node_assert_1.default.deepStrictEqual((0, __1.dive)({ a: { b: { c: 1 } } }, 3, (path, leaf) => [path.join('/'), leaf]), { 'a/b/c': 1 });
     });
     (0, node_test_1.test)('dive node with only inherited keys becomes a leaf', () => {
@@ -106,8 +92,6 @@ const ADAPTERS = {
         ]);
     });
     (0, node_test_1.test)('joins Infinity matches String()', () => {
-        // TS renders non-finite numbers as JS String() does; the Go port special-
-        // cases the same values so both agree.
         node_assert_1.default.equal((0, __1.joins)(['x', Infinity, 'y', -Infinity], ':'), 'x:Infinity:y:-Infinity');
         node_assert_1.default.equal((0, __1.joins)(['x', NaN], ':'), 'x:NaN');
     });
@@ -118,13 +102,11 @@ const ADAPTERS = {
         node_assert_1.default.equal((0, __1.joins)(['x', [1, NaN]], ':'), 'x:[1,null]');
     });
     (0, node_test_1.test)('dive skips holes in a sparse array', () => {
-        // Object.keys omits holes, so no spurious `undefined` leaf is produced.
         const sparse = [];
         sparse[1] = 'y';
         node_assert_1.default.deepStrictEqual((0, __1.dive)({ a: sparse }), [[['a', '1'], 'y']]);
     });
     (0, node_test_1.test)('joins non-serialisable elements render empty', () => {
-        // A function serialises to undefined -> '' (matches Go's json.Marshal path).
         node_assert_1.default.equal((0, __1.joins)(['x', () => 1], ':'), 'x:');
         // A cyclic element throws inside JSON.stringify and is caught -> '' (Go's
         // json.Marshal errors and yields '' too).
@@ -138,26 +120,20 @@ const ADAPTERS = {
         node_assert_1.default.equal((0, __1.stringify)(c), '{"a":1,"self":"[Circular *]"}');
         // undefined round-trips as undefined (Go cannot represent this).
         node_assert_1.default.equal((0, __1.stringify)(undefined), undefined);
-        // Insertion order is preserved (Go's encoding/json sorts keys).
         node_assert_1.default.equal((0, __1.stringify)({ b: 1, a: 2 }), '{"b":1,"a":2}');
-        // replacer / indent are forwarded to JSON.stringify.
         node_assert_1.default.equal((0, __1.stringify)({ a: 1 }, null, 2), '{\n  "a": 1\n}');
     });
     (0, node_test_1.test)('decircular cycles and Error handling', () => {
-        // Nested object cycle.
         const parent = { child: { name: 'kid' } };
         parent.child.parent = parent;
         const r = (0, __1.decircular)(parent);
         node_assert_1.default.equal(r.child.name, 'kid');
         node_assert_1.default.equal(r.child.parent, '[Circular *]');
-        // Array cycle.
         const arr = [1];
         arr.push(arr);
         const ra = (0, __1.decircular)(arr);
         node_assert_1.default.equal(ra[0], 1);
         node_assert_1.default.match(ra[1], /Circular/);
-        // Error: cloned onto the Error prototype, own enumerable props walked,
-        // message/stack (non-enumerable) excluded.
         const err = Object.assign(new Error('boom'), { code: 500, detail: { a: 1 } });
         const de = (0, __1.decircular)(err);
         node_assert_1.default.ok(de instanceof Error);
@@ -218,7 +194,6 @@ const ADAPTERS = {
         node_assert_1.default.equal(all[0][1], 'file.ts');
         node_assert_1.default.equal((0, __1.getdlog)('rev').log('/any/dir/file.ts').length, 2);
         node_assert_1.default.equal((0, __1.getdlog)('rev').log('nope.ts').length, 0);
-        // No-argument form exercises the tag/file fallbacks.
         const d2 = (0, __1.getdlog)();
         node_assert_1.default.equal(d2.tag, '-');
         node_assert_1.default.equal(d2.file, '-');
@@ -235,17 +210,14 @@ const ADAPTERS = {
         node_assert_1.default.equal(calls.length, 2);
         node_assert_1.default.equal(calls[0].merge, true);
         node_assert_1.default.equal(calls[1].conflict, true);
-        // A cwd already ending in a path separator is used as-is.
         calls.length = 0;
         (0, __1.showChanges)(log, 'pt', { files: { merged: [node_path_1.default.sep + 'a' + node_path_1.default.sep + 'd.txt'], conflicted: [] } }, node_path_1.default.sep + 'a' + node_path_1.default.sep);
         node_assert_1.default.equal(calls.length, 1);
-        // Default cwd branch (no explicit cwd).
         calls.length = 0;
         (0, __1.showChanges)(log, 'pt', { files: { merged: [], conflicted: [] } });
         node_assert_1.default.equal(calls.length, 0);
     });
     (0, node_test_1.test)('prettyPino builds a logger (best-effort)', () => {
-        // A provided logger is returned unchanged.
         const fake = { info() { } };
         node_assert_1.default.equal((0, __1.prettyPino)('x', { pino: fake }), fake);
         // Level-selection branches: true -> debug, string -> that level, else info.

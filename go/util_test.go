@@ -11,15 +11,6 @@ import (
 	"testing"
 )
 
-// ---------------------------------------------------------------------------
-// Shared cross-language parity specs (top-level test/*.tsv).
-//
-// The same fixtures drive the TypeScript suite. Each row is (name, args,
-// expected); the adapter maps the logical argument list to a real Go call, and
-// results are compared as canonical JSON (map keys sorted by encoding/json), so
-// a behavioural drift between the two implementations fails one of them.
-// ---------------------------------------------------------------------------
-
 type specRow struct {
 	name     string
 	args     []any
@@ -179,7 +170,6 @@ func TestDiveMap(t *testing.T) {
 		t.Errorf("DiveMap = %v", got)
 	}
 
-	// ok=false omits the entry.
 	got2 := DiveMap(node, func(path []string, leaf any) (string, any, bool) {
 		if path[1] == "b" {
 			return "", nil, false

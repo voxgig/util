@@ -42,10 +42,6 @@ func jsTruthy(v any) bool {
 	}
 }
 
-// Version is the released version of the Go module. Set it with
-// `make bump-go V=x.y.z`, commit that diff, then `make publish` — which
-// releases this module (as the tag go/vx.y.z) and the npm package together
-// in one run. The npm package carries its own, independent version series.
 const Version = "0.1.6"
 
 // Camelify converts a kebab-case string (or slice of strings) to PascalCase.
@@ -55,7 +51,6 @@ func Camelify(input string) string {
 	return camelifyParts(parts)
 }
 
-// CamelifySlice converts a slice of strings to PascalCase.
 func CamelifySlice(input []string) string {
 	return camelifyParts(input)
 }
@@ -73,7 +68,6 @@ func camelifyParts(parts []string) string {
 	return sb.String()
 }
 
-// DiveEntry represents a single entry returned by Dive: a path and its value.
 type DiveEntry struct {
 	Path  []string
 	Value any
@@ -233,7 +227,6 @@ func Joins(arr []any, seps ...string) string {
 func toString(v any) string {
 	switch val := v.(type) {
 	case nil:
-		// JS Array.join renders null/undefined as the empty string.
 		return ""
 	case string:
 		return val
@@ -242,7 +235,6 @@ func toString(v any) string {
 	case int64:
 		return strconv.FormatInt(val, 10)
 	case float64:
-		// Match JS String() for non-finite and signed-zero values first.
 		if math.IsInf(val, 1) {
 			return "Infinity"
 		}
@@ -250,24 +242,12 @@ func toString(v any) string {
 			return "-Infinity"
 		}
 		if val == 0 {
-			// Normalise -0 to "0" (JS String(-0) === "0"); FormatFloat keeps the sign.
 			return "0"
 		}
-		// 'f' with precision -1 gives the shortest round-trippable fixed-point
-		// form, matching JS String(): whole numbers print without ".0" (2 not
-		// "2.0") and full digits are kept (1234567 not "1.234567e+06"). Only the
-		// extreme magnitudes where JS switches to exponential (>=1e21, <1e-6)
-		// diverge, which never occur in pin/path joins.
 		return strconv.FormatFloat(val, 'f', -1, 64)
 	case bool:
 		return strconv.FormatBool(val)
 	default:
-		// Objects/arrays render as JSON (json.Marshal sorts keys, matching the
-		// canonicalised TS output). On a marshal error, distinguish a cycle
-		// (TS's JSON.stringify throws -> '') from a non-finite value nested in
-		// the container (TS's JSON.stringify emits null): retry with those
-		// nulled. The value is acyclic on that retry, so no cycle tracking is
-		// needed.
 		b, err := json.Marshal(val)
 		if err == nil {
 			return string(b)
@@ -300,21 +280,18 @@ func Pinify(path []string) string {
 	return sb.String()
 }
 
-// OrderItem represents an item in an ordered collection.
 type OrderItem struct {
 	Key    string
 	Title  string
 	Fields map[string]any
 }
 
-// OrderSpec defines how items should be ordered.
 type OrderSpec struct {
 	Sort    string
 	Exclude string
 	Include string
 }
 
-// Order orders and filters a map of items according to the spec.
 func Order(itemMap map[string]map[string]any, spec *OrderSpec) []map[string]any {
 	items := make([]map[string]any, 0, len(itemMap))
 	// Go maps have no insertion order, so iterate keys in sorted order for a
@@ -374,8 +351,6 @@ func orderSort(items []map[string]any, spec *OrderSpec) []map[string]any {
 		switch k {
 		case "alpha$":
 			filtered := filterItems(items, keyOrderSet)
-			// Stable so equal titles keep the (key-sorted) input order,
-			// matching JS's stable Array.sort.
 			sort.SliceStable(filtered, func(i, j int) bool {
 				ti := getTitle(filtered[i])
 				tj := getTitle(filtered[j])
@@ -389,7 +364,6 @@ func orderSort(items []map[string]any, spec *OrderSpec) []map[string]any {
 			maxLen := 0
 			for _, item := range filtered {
 				t := getTitle(item)
-				// UTF-16 code-unit length, matching JS String.length exactly.
 				if l := utf16Len(t); l > maxLen {
 					maxLen = l
 				}
@@ -448,9 +422,6 @@ func getTitle(item map[string]any) string {
 	return toString(item["title"])
 }
 
-// utf16Len counts the UTF-16 code units in s, matching JS String.length exactly
-// (a code point >= U+10000 counts as 2, the surrogate pair). Equals the rune
-// count for Basic-Multilingual-Plane text.
 func utf16Len(s string) int {
 	n := 0
 	for _, r := range s {
@@ -463,8 +434,6 @@ func utf16Len(s string) int {
 	return n
 }
 
-// padStart left-pads s to length measured in UTF-16 code units, matching JS
-// String.padStart / String.length.
 func padStart(s string, length int, pad rune) string {
 	n := utf16Len(s)
 	if n >= length {
@@ -509,19 +478,12 @@ func orderInclude(items []map[string]any, spec *OrderSpec) []map[string]any {
 	return result
 }
 
-// orderTokenSep matches the JS split pattern /\s*,\s*/ used by order: commas
-// with any surrounding whitespace. Splitting with it (and keeping empty tokens)
-// reproduces the canonical TS token list. Note Go's RE2 \s is ASCII-only whereas
-// JS's \s also matches Unicode whitespace (e.g. a non-breaking space); a token
-// spec padded with such characters is a deliberate, documented divergence — sort
-// keys are plain identifiers in practice.
 var orderTokenSep = regexp.MustCompile(`\s*,\s*`)
 
 func splitTokens(s string) []string {
 	return orderTokenSep.Split(s, -1)
 }
 
-// Entity processes a model to extract entity field validation.
 func Entity(model map[string]any) map[string]any {
 	// A missing/non-map main or ent yields an empty map (matching TS, whose
 	// dive of undefined produces no entries), not nil.
@@ -539,8 +501,6 @@ func Entity(model map[string]any) map[string]any {
 
 	for _, entry := range entries {
 		path := entry.Path
-		// Skip malformed entries that don't resolve to a base/name pair
-		// (guards the path[0]/path[1] access below).
 		if len(path) < 2 {
 			continue
 		}
@@ -579,7 +539,6 @@ func Entity(model map[string]any) map[string]any {
 			}
 			if jsTruthy(field["valid"]) {
 				if s, ok := field["valid"].(string); ok {
-					// A null/undefined kind coerces to "" (not "undefined").
 					base := ""
 					if kindVal != nil {
 						base = toString(kindVal)
@@ -617,13 +576,6 @@ func Stringify(val any) string {
 	return string(b)
 }
 
-// Decircular deep-copies a value, replacing circular references with
-// "[Circular *path]" strings, where path is the dotted path to the first
-// occurrence. It mirrors the canonical TS decircular, detecting cycles by
-// object identity on the current traversal path. Only map[string]any and []any
-// are recursed into; all other values (including non-finite floats) are returned
-// unchanged — matching the TS decircular, which leaves NaN/±Inf intact and lets
-// JSON.stringify null them at serialisation time.
 func Decircular(val any) any {
 	seen := make(map[uintptr][]string)
 	var path []string
@@ -660,8 +612,6 @@ func decircularWalk(val any, seen map[uintptr][]string, path *[]string) any {
 		return result
 
 	case []any:
-		// Empty slices can't take part in a cycle; skip identity tracking
-		// (an empty slice's backing pointer is 0).
 		if len(v) == 0 {
 			return []any{}
 		}
@@ -688,13 +638,6 @@ func decircularWalk(val any, seen map[uintptr][]string, path *[]string) any {
 	}
 }
 
-// nullifyNonFinite deep-copies a value, replacing non-finite floats (NaN, ±Inf)
-// with nil so a subsequent json.Marshal succeeds and emits null, matching
-// JSON.stringify. It is applied only on serialisation paths (Stringify, and the
-// object/array case of joins' toString) — never in Decircular, whose deep-copy
-// semantics must preserve non-finite values as the canonical TS decircular does.
-// Callers pass acyclic input (Stringify de-cycles first; toString only reaches
-// it when json.Marshal did not report a cycle), so no cycle tracking is needed.
 func nullifyNonFinite(v any) any {
 	switch x := v.(type) {
 	case float64:
@@ -725,7 +668,6 @@ func nullifyNonFinite(v any) any {
 	}
 }
 
-// mapPtr extracts a stable pointer from a map for identity comparison.
 func mapPtr(m map[string]any) uintptr {
 	return reflect.ValueOf(m).Pointer()
 }

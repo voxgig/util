@@ -61,7 +61,6 @@ func TestGetdlog(t *testing.T) {
 		t.Errorf("expected file basename 'file.ts', got %v", all[0][1])
 	}
 
-	// Filter by any file with the same basename.
 	if got := len(Getdlog("rev", "").Log("/any/dir/file.ts")); got != 2 {
 		t.Errorf("expected 2 filtered entries, got %d", got)
 	}
@@ -81,8 +80,6 @@ func TestGetdlog(t *testing.T) {
 }
 
 func TestGetdlogSkipsShortEntries(t *testing.T) {
-	// White-box: a synthetic entry shorter than 2 elements is filtered out by
-	// DLog.Log's len(e) < 2 guard.
 	dlogMu.Lock()
 	dlogEntries = [][]any{{"only-one"}, {"skip", "file.ts", int64(0)}}
 	dlogMu.Unlock()
@@ -149,10 +146,10 @@ func TestPrettyPinoLevelSelection(t *testing.T) {
 	// ConsoleWriter defaults to os.Stdout, but the returned Log is exercised
 	// only via a non-emitting method call to avoid corrupting test output.
 	for _, opts := range []PrettyPinoOpts{
-		{Debug: true},          // -> "debug"
-		{Level: "warn"},        // -> "warn"
-		{},                     // -> "info" (default)
-		{Level: "not-a-level"}, // -> "info" (parse failure fallback)
+		{Debug: true},
+		{Level: "warn"},
+		{},
+		{Level: "not-a-level"},
 	} {
 		log := PrettyPino("svc", opts)
 		if log == nil {
@@ -162,10 +159,6 @@ func TestPrettyPinoLevelSelection(t *testing.T) {
 }
 
 func TestPrettyPinoEmitsToWriter(t *testing.T) {
-	// Redirect the adapter through a buffer so we can exercise every level
-	// method (Trace..Fatal) and the arg-dispatching branches without touching
-	// stdout. Since PrettyPino writes to os.Stdout, we build an equivalent
-	// zerolog logger with a buffer sink for this test.
 	var buf bytes.Buffer
 	l := zerolog.New(&buf).Level(zerolog.TraceLevel)
 	adapter := &zerologAdapter{l: &l}
@@ -173,8 +166,8 @@ func TestPrettyPinoEmitsToWriter(t *testing.T) {
 	adapter.Trace(map[string]any{"a": 1}, "trace-msg")
 	adapter.Debug("debug-msg")
 	adapter.Info(map[string]any{"b": 2})
-	adapter.Warn("warn-a", "warn-b") // two strings joined by space
-	adapter.Error(42)                // non-string, non-map → fallback branch
+	adapter.Warn("warn-a", "warn-b")
+	adapter.Error(42)
 	adapter.Fatal("fatal-msg")
 
 	// Each level emits one JSON object per line.
