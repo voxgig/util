@@ -36,12 +36,6 @@ type PrettyPinoOpts struct {
 	Level string
 }
 
-// PrettyPino builds a zerolog-backed Log with a console writer whose format
-// resembles the canonical TS prettyPino output (name, point, note fields with
-// the working directory replaced by "."). If opts.Pino is set, it is returned
-// unchanged, mirroring the TS short-circuit that lets callers inject their own
-// logger. zerolog is the Go analogue of pino: JSON-first, low-allocation, with
-// a built-in ConsoleWriter for pretty development output.
 func PrettyPino(name string, opts PrettyPinoOpts) Log {
 	if opts.Pino != nil {
 		return opts.Pino
@@ -76,9 +70,6 @@ func PrettyPino(name string, opts PrettyPinoOpts) Log {
 	return &zerologAdapter{l: &l}
 }
 
-// zerologAdapter wraps a *zerolog.Logger so it satisfies Log. Each level method
-// scans variadic args pino-style: a map[string]any contributes fields, a string
-// contributes to the message (joined by space when multiple).
 type zerologAdapter struct {
 	l *zerolog.Logger
 }
@@ -110,19 +101,12 @@ func (z *zerologAdapter) Info(args ...any)  { z.emit(zerolog.InfoLevel, args) }
 func (z *zerologAdapter) Warn(args ...any)  { z.emit(zerolog.WarnLevel, args) }
 func (z *zerologAdapter) Error(args ...any) { z.emit(zerolog.ErrorLevel, args) }
 
-// Fatal emits at fatal level but, unlike zerolog's own log.Fatal(), does NOT
-// os.Exit — matching pino's Log.fatal, which only logs. Callers that need to
-// abort should call os.Exit themselves.
 func (z *zerologAdapter) Fatal(args ...any) { z.emit(zerolog.FatalLevel, args) }
 
-// ChangesResult is the subset of the Jostraca result consumed by ShowChanges:
-// a merged and a conflicted file list. Kept intentionally small so callers do
-// not need to depend on the full Jostraca types.
 type ChangesResult struct {
 	Files ChangesFiles
 }
 
-// ChangesFiles lists file paths merged vs. left in conflict by a generator run.
 type ChangesFiles struct {
 	Merged     []string
 	Conflicted []string
@@ -158,12 +142,6 @@ func ShowChanges(log Log, point string, jres ChangesResult, cwd string) {
 	}
 }
 
-// DLog is a lightweight tagged debug-trace handle produced by Getdlog. Its
-// Emit method appends entries to a process-global accumulator; Log retrieves
-// entries filtered by tag (and optionally by basename of a file path). Mirrors
-// the canonical TS getdlog, whose returned callable both records and queries.
-// Go has no callable-struct syntax, so the emit form is a method (Emit) rather
-// than invoking the DLog value directly.
 type DLog struct {
 	Tag  string
 	File string
@@ -188,8 +166,6 @@ func Getdlog(tag, filePath string) *DLog {
 	return &DLog{Tag: tag, File: file}
 }
 
-// Emit appends [tag, file, unix-millis, args...] to the global debug trace.
-// Concurrent Emit calls across goroutines are safe.
 func (d *DLog) Emit(args ...any) {
 	dlogMu.Lock()
 	defer dlogMu.Unlock()

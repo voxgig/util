@@ -24,19 +24,9 @@ import {
 } from '../'
 
 
-// ---------------------------------------------------------------------------
-// Shared cross-language parity specs (top-level test/*.tsv).
-//
-// Each row is (name, args, expected). The same fixtures drive the Go suite, so
-// a behavioural drift between the two implementations fails one of them. `args`
-// is the logical argument list; the adapter below maps it to a real call.
-// ---------------------------------------------------------------------------
 
 const SPEC_DIR = Path.join(__dirname, '..', '..', 'test')
 
-// Canonical JSON: object keys sorted recursively, undefined normalised to null,
-// so two structurally equal values compare equal regardless of key order (and
-// so Go's key-sorted json.Marshal output lines up with the same fixtures).
 function sortKeys(v: any): any {
   if (Array.isArray(v)) {
     return v.map(sortKeys)
@@ -59,7 +49,6 @@ function loadSpec(name: string): SpecRow[] {
   const text = Fs.readFileSync(Path.join(SPEC_DIR, name + '.tsv'), 'utf8')
   const rows: SpecRow[] = []
   const lines = text.split('\n')
-  // Line 0 is the header (name/args/expected).
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i]
     if ('' === line.trim() || line.startsWith('#')) {
@@ -117,17 +106,14 @@ describe('ts-only', () => {
 
 
   test('dive mapper form', () => {
-    // Mapper as the 2nd argument returns a keyed object.
     assert.deepStrictEqual(
       dive({ a: { b: 1 }, c: { d: 2 } }, (path: any[], leaf: any) => [path.join('.'), leaf]),
       { 'a.b': 1, 'c.d': 2 })
 
-    // A null key omits the entry.
     assert.deepStrictEqual(
       dive({ a: { b: 1 }, c: { d: 2 } }, (path: any[], leaf: any) => ['b' === path[1] ? null : path.join('.'), leaf]),
       { 'c.d': 2 })
 
-    // Mapper as the 3rd argument (with an explicit depth).
     assert.deepStrictEqual(
       dive({ a: { b: { c: 1 } } }, 3, (path: any[], leaf: any) => [path.join('/'), leaf]),
       { 'a/b/c': 1 })
@@ -147,8 +133,6 @@ describe('ts-only', () => {
 
 
   test('joins Infinity matches String()', () => {
-    // TS renders non-finite numbers as JS String() does; the Go port special-
-    // cases the same values so both agree.
     assert.equal(joins(['x', Infinity, 'y', -Infinity], ':'), 'x:Infinity:y:-Infinity')
     assert.equal(joins(['x', NaN], ':'), 'x:NaN')
   })
@@ -163,7 +147,6 @@ describe('ts-only', () => {
 
 
   test('dive skips holes in a sparse array', () => {
-    // Object.keys omits holes, so no spurious `undefined` leaf is produced.
     const sparse: any[] = []
     sparse[1] = 'y'
     assert.deepStrictEqual(dive({ a: sparse }), [[['a', '1'], 'y']])
@@ -171,7 +154,6 @@ describe('ts-only', () => {
 
 
   test('joins non-serialisable elements render empty', () => {
-    // A function serialises to undefined -> '' (matches Go's json.Marshal path).
     assert.equal(joins(['x', () => 1], ':'), 'x:')
     // A cyclic element throws inside JSON.stringify and is caught -> '' (Go's
     // json.Marshal errors and yields '' too).
@@ -189,31 +171,25 @@ describe('ts-only', () => {
     // undefined round-trips as undefined (Go cannot represent this).
     assert.equal(stringify(undefined), undefined as any)
 
-    // Insertion order is preserved (Go's encoding/json sorts keys).
     assert.equal(stringify({ b: 1, a: 2 }), '{"b":1,"a":2}')
 
-    // replacer / indent are forwarded to JSON.stringify.
     assert.equal(stringify({ a: 1 }, null, 2), '{\n  "a": 1\n}')
   })
 
 
   test('decircular cycles and Error handling', () => {
-    // Nested object cycle.
     const parent: any = { child: { name: 'kid' } }
     parent.child.parent = parent
     const r = decircular(parent)
     assert.equal(r.child.name, 'kid')
     assert.equal(r.child.parent, '[Circular *]')
 
-    // Array cycle.
     const arr: any = [1]
     arr.push(arr)
     const ra = decircular(arr)
     assert.equal(ra[0], 1)
     assert.match(ra[1], /Circular/)
 
-    // Error: cloned onto the Error prototype, own enumerable props walked,
-    // message/stack (non-enumerable) excluded.
     const err: any = Object.assign(new Error('boom'), { code: 500, detail: { a: 1 } })
     const de = decircular(err)
     assert.ok(de instanceof Error)
@@ -290,7 +266,6 @@ describe('ts-only', () => {
     assert.equal(getdlog('rev').log('/any/dir/file.ts').length, 2)
     assert.equal(getdlog('rev').log('nope.ts').length, 0)
 
-    // No-argument form exercises the tag/file fallbacks.
     const d2 = getdlog()
     assert.equal(d2.tag, '-')
     assert.equal(d2.file, '-')
@@ -310,12 +285,10 @@ describe('ts-only', () => {
     assert.equal(calls[0].merge, true)
     assert.equal(calls[1].conflict, true)
 
-    // A cwd already ending in a path separator is used as-is.
     calls.length = 0
     showChanges(log, 'pt', { files: { merged: [Path.sep + 'a' + Path.sep + 'd.txt'], conflicted: [] } }, Path.sep + 'a' + Path.sep)
     assert.equal(calls.length, 1)
 
-    // Default cwd branch (no explicit cwd).
     calls.length = 0
     showChanges(log, 'pt', { files: { merged: [], conflicted: [] } })
     assert.equal(calls.length, 0)
@@ -323,7 +296,6 @@ describe('ts-only', () => {
 
 
   test('prettyPino builds a logger (best-effort)', () => {
-    // A provided logger is returned unchanged.
     const fake: any = { info() { } }
     assert.equal(prettyPino('x', { pino: fake }), fake)
 

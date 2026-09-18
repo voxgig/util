@@ -86,13 +86,6 @@ function hasOwnKeys(obj) {
 }
 function diveInternal(node, d, prefix, items) {
     const obj = node || {};
-    // Object keys are visited in sorted order for deterministic, cross-language
-    // output; array indices are visited in numeric order (0,1,…,10,11 — not the
-    // lexicographic 0,1,10,11,2 that Object.keys(arr).sort() would give), so the
-    // Go port can reproduce the exact same order.
-    // Object.keys already yields array indices in ascending numeric order and
-    // skips holes in a sparse array; object keys are sorted for a deterministic,
-    // cross-language-stable order.
     const keys = Array.isArray(obj) ?
         Object.keys(obj) :
         Object.keys(obj).sort();
@@ -146,13 +139,6 @@ function canonicalize(v, seen = new WeakSet()) {
     seen.delete(v);
     return out;
 }
-// Render a single joins element to a string. Primitives coerce as JS would
-// (numbers/booleans via String, null/undefined to ''), while objects and arrays
-// serialise to JSON with sorted keys — matching the Go port's toString
-// (json.Marshal), rather than JS's default '[object Object]' / recursive
-// comma-join. Non-finite numbers serialise as null (JSON.stringify). A value
-// that cannot be serialised (a cycle, a function) yields '' (as Go's
-// json.Marshal error path does).
 function joinValue(v) {
     if (null == v)
         return '';
@@ -210,7 +196,6 @@ function pinify(path) {
         .join('');
     return pin;
 }
-// TODO: only works on base/name style entities - generalize
 function entity(model) {
     let entries = dive(model?.main?.ent);
     let entMap = {};
@@ -221,8 +206,6 @@ function entity(model) {
         if (path.length < 2) {
             continue;
         }
-        // TODO: move EntShape to @voxgig/model
-        // let ent = EntShape(entry[1])
         let ent = entry[1];
         if (null == ent || 'object' !== typeof ent) {
             continue;
